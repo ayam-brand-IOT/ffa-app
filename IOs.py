@@ -14,6 +14,9 @@ def laser():
 
     laser_state = not laser_state
     pi.write(io_map.__LASER_PIN, laser_state)
+
+def flash(value):
+    pi.write(io_map.__FLASH_PIN, value)
  
 # while True:
 #     for index in range(len(inputs)):

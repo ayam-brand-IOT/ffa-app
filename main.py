@@ -3,7 +3,7 @@ import json
 import keyboard
 import IOs as ios
 import imageProcess
-import SCAIME_MODBUS as net
+import TLB_MODBUS as net
 from threading import Lock
 from flask_cors import CORS
 from flask_socketio import SocketIO, send, emit
@@ -46,7 +46,7 @@ def update_net_status():
 def calibrate_load_cell(data):
     net.isCalibrating = True
     step = data['step']
-    args = data['args']
+    args = data['args'] 
 
     # print values
     print("calibrate load cell step: ", step , " args: ", args)
@@ -55,13 +55,18 @@ def calibrate_load_cell(data):
     net.remote_calibration(step, args)
     emit('calibration_step_commited', "step commited")
 
+@socketio.event
 def resume_net_update():
     net.isCalibrating = False
 
 @socketio.event
-def update_indicator_status(data):
-    # print(data)
-    emit('indicator_update', keyboard.get_keys())
+def tare():
+    net.setTare()
+
+# @socketio.event
+# def update_indicator_status(data):
+#     # print(data)
+#     emit('indicator_update', keyboard.get_keys())
 
 @socketio.event
 def get_analysis_data(data):
@@ -93,8 +98,8 @@ def connect(auth):
     keyboard.set_callback(update_status)
     global keyboard_thread, net_thread
     with thread_lock:
-        if keyboard_thread is None:
-            keyboard_thread = socketio.start_background_task(keyboard.async_key_check)
+        if net_thread is None:
+            # keyboard_thread = socketio.start_background_task(keyboard.async_key_check)
             net_thread = socketio.start_background_task(update_net_status)
             
     emit('indicator_update', keyboard.get_keys())

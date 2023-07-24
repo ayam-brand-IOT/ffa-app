@@ -2,20 +2,15 @@ import cv2
 import numpy as np
 import time
 import math
-import requests
 import json
-
+import IOs as ios
 
 cap = cv2.VideoCapture(0)
-
-
-
-__URL__ = 'http://example.com/api/data'
 
 __RATIO__ = 16/9
 __CAMERA_WIDTH__ = 550
 __CAMERA_HEIGTH__ = math.floor(__CAMERA_WIDTH__/__RATIO__)
-__FRAMESIZE__ = (__CAMERA_WIDTH__, __CAMERA_HEIGTH__)
+__FRAMESIZE__ = (1000, 650)
 __MAIN_PATH__ ="./muestras/opencv_frame_" # path to save images
 
 last_frame = None
@@ -38,6 +33,7 @@ def handle_capture(callback):
     global captured, frameReadyCallback
     print("capture")
     captured = True
+    ios.flash(True)
     frameReadyCallback = callback
 
 def getAnalyzedImage():
@@ -57,9 +53,11 @@ def handle_reset():
 def updateImage():
     global captured, img_counter, cap, last_frame, x1, captured_data, frameReadyCallback
     ret, frame = cap.read()
+    # frame = cv2.resize(frame, (1000, 650))
     #  cap.release()
     # if captured and not pause_image:
-    if captured:
+    if captured: 
+        ios.flash(False)
         img_name = __MAIN_PATH__+"{}.png".format(img_counter)
         cv2.imwrite(img_name, frame)
         print("{} written!".format(img_name))
