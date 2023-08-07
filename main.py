@@ -37,8 +37,12 @@ def frameIsReady():
 def update_net_status():
      while True:
         # print("net status: ", net.readWeight())
-        socketio.emit('weight_update', net.readWeight())
-        socketio.sleep(1)
+        if net.isOnTensionMode():
+            socketio.emit('tension_update', net.readTenstion())
+            socketio.sleep(.025)
+        else:
+            socketio.emit('weight_update', net.readWeight())
+            socketio.sleep(.5)
 
 ############################################ SocketIO Handlers ############################################
 
@@ -62,6 +66,16 @@ def resume_net_update():
 @socketio.event
 def tare():
     net.setTare()
+
+@socketio.event
+def enter_to_tension_test(data):
+    print("enter to tension test")
+    net.enterToTensionTest()
+    print(net.isOnTensionMode())
+
+@socketio.event
+def enter_to_weight_mode(data):
+    net.enterToWeightMode()
 
 # @socketio.event
 # def update_indicator_status(data):
@@ -95,14 +109,14 @@ def laser(data):
 @socketio.on('connect')
 def connect(auth):
     # print('Client connected')
-    keyboard.set_callback(update_status)
-    global keyboard_thread, net_thread
+    # keyboard.set_callback(update_status)
+    global net_thread
     with thread_lock:
         if net_thread is None:
             # keyboard_thread = socketio.start_background_task(keyboard.async_key_check)
             net_thread = socketio.start_background_task(update_net_status)
             
-    emit('indicator_update', keyboard.get_keys())
+    # emit('indicator_update', keyboard.get_keys())
 
 @socketio.on('disconnect')
 def disconnect():

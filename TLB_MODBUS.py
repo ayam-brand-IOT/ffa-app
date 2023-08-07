@@ -6,6 +6,11 @@ import minimalmodbus
 SLAVE_ID = 1
 BELLY_TEST_ID = 2
 
+__WEIGHT_MODE = 0
+__TENSION_MODE = 1
+
+READING_MODE = __WEIGHT_MODE
+
 isCalibrating = False
 
 # Modbus address 
@@ -50,6 +55,17 @@ instrument2.byteorder = minimalmodbus.BYTEORDER_LITTLE
 #     if status == 3: print("Error !!!")
 
     
+def isOnTensionMode():
+    return READING_MODE == __TENSION_MODE
+
+def enterToTensionTest():
+    global READING_MODE
+    READING_MODE = __TENSION_MODE
+
+def enterToWeightMode():
+    global READING_MODE
+    READING_MODE = __WEIGHT_MODE
+
 def setZero():
     print("Setting to Zero")
     raw_weight = readWeight()
@@ -70,10 +86,16 @@ def readWeight():
     if isCalibrating:
         return 0
     weight_modbus = instrument.read_long(__NETREG, byteorder=3)
-    belly_tention = instrument2.read_long(__NETREG, byteorder=3)
-    print("Weight: ", weight_modbus)
-    print("Belly: ", belly_tention)
+    # print("Weight: ", weight_modbus)
     return weight_modbus
+
+def readTenstion():
+    global isCalibrating
+    if isCalibrating:
+        return 0
+    belly_tention = instrument2.read_long(__NETREG, byteorder=3)
+    # print("Tension: ", belly_tention)
+    return belly_tention
 
 def physical_calibration():
     print("Zero calibrating : Don't put anything on the checkweigher \n Press Enter to start")
