@@ -10,7 +10,7 @@ isCalibrating = False
 # Modbus address 
 REG_CMD = 0x90
 REG_ANSW = 0x91
-NET_ADDRESS = 0x7E
+NET_ADDRESS = 0x82
 TARE_ADDRESS = 0x80 
 ZERO_ADDRESS = 0x18
 NB_CALIB_SEG = 0x0E
@@ -41,6 +41,7 @@ def answerStatus():
     if status == 1: print("Executing...")
     if status == 2: print("Success")
     if status == 3: print("Error !!!")
+    
 
 def reset():
     instrument.write_register(REG_CMD, 0)
@@ -49,8 +50,14 @@ def reset():
 def setZero():
     reset()
     print("Setting to Zero")
-    instrument.write_register(REG_CMD, 0xD3)
+    instrument.write_register(REG_CMD, 0xD8)
     answerStatus()
+    
+def setDefault():
+    reset()
+    print("Set Default Parameters")
+    instrument.write_register(REG_CMD, 0xD2)
+    answerStatus()   
     
 def setTare():
     reset()

@@ -64,23 +64,30 @@ def resume_net_update():
     net.isCalibrating = False
 
 @socketio.event
-def tare():
-    net.setTare()
-
-@socketio.event
 def enter_to_tension_test(data):
     print("enter to tension test")
-    net.enterToTensionTest()
-    print(net.isOnTensionMode())
 
 @socketio.event
 def enter_to_weight_mode(data):
     net.enterToWeightMode()
 
-# @socketio.event
-# def update_indicator_status(data):
-#     # print(data)
-#     emit('indicator_update', keyboard.get_keys())
+@socketio.event
+def set_zero(data):
+    net.setZero()
+
+@socketio.event
+def set_tare(data):
+    net.setTare(bool(data))
+
+@socketio.event
+def update_net(data):
+    print("net update")
+    socketio.emit('weight_update', net.readWeight())
+
+@socketio.event
+def get_tension(data):
+    print("tension update")
+    socketio.emit('tension_update', net.readTenstion())
 
 @socketio.event
 def get_analysis_data(data):
@@ -104,17 +111,20 @@ def reset_defects(data):
 @socketio.event
 def laser(data):
     print("laser")
-    ios.laser()
+    # ios.laser()
 
 @socketio.on('connect')
 def connect(auth):
+    print("Client connected")
+    ios.laser(True)
+    ios.flash(True)
     # print('Client connected')
     # keyboard.set_callback(update_status)
-    global net_thread
-    with thread_lock:
-        if net_thread is None:
+    # global net_thread
+    # with thread_lock:
+        # if net_thread is None:
             # keyboard_thread = socketio.start_background_task(keyboard.async_key_check)
-            net_thread = socketio.start_background_task(update_net_status)
+            #et_thread = socketio.start_background_task(update_net_status)
             
     # emit('indicator_update', keyboard.get_keys())
 
@@ -166,4 +176,4 @@ def getAnalyzedImage():
 
 ################################################# Main #####################################################
 
-socketio.run(app, host='0.0.0.0', port='3030')
+socketio.run(app, host='0.0.0.0', port='3030', allow_unsafe_werkzeug=True)

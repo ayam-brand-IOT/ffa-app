@@ -19,8 +19,8 @@ frameReadyCallback = None
 
 zoi_x1 = 150
 zoi_y1 = 40
-zoi_x2 = 1000
-zoi_y2 = 469
+zoi_x2 = 800
+zoi_y2 = 650
 captured = False
 # pause_image = False
 ZOI_start = [zoi_x1, zoi_y1]
@@ -34,6 +34,7 @@ def handle_capture(callback):
     print("capture")
     captured = True
     ios.flash(True)
+    ios.laser(True)
     frameReadyCallback = callback
 
 def getAnalyzedImage():
@@ -53,11 +54,12 @@ def handle_reset():
 def updateImage():
     global captured, img_counter, cap, last_frame, x1, captured_data, frameReadyCallback
     ret, frame = cap.read()
-    # frame = cv2.resize(frame, (1000, 650))
+    frame = cv2.resize(frame, (1000, 650))
     #  cap.release()
     # if captured and not pause_image:
     if captured: 
         ios.flash(False)
+        ios.laser(False)
         img_name = __MAIN_PATH__+"{}.png".format(img_counter)
         cv2.imwrite(img_name, frame)
         print("{} written!".format(img_name))
@@ -87,12 +89,12 @@ def updateImage():
 
         ###Task 2 : Region of Interest (ROI)
         y1 = 60
-        x2 = 1000
+        x2 = 950
         if zoi > x2:
             x1 = 50
         else:
             x1 = zoi+4
-        y2 = 500
+        y2 = 600
         ROIBW = BW[y1:y2, x1:x2]  # source_image[ start_row : end_row, start_col : end_col] row = y, column = x
         cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 0), 1)
         cv2.putText(im,"Zone Of Interest",(x2-150, y2+30),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,200,0),1)
@@ -111,7 +113,7 @@ def updateImage():
         cv2.line(im,(X1+x1, y1),(X1+x1, y2),(255,0,0),1)
         cv2.arrowedLine(im,(x1, y1+20),(X1+x1, y1+20),(0,0,255),2,1,0,0.03)
         cv2.arrowedLine(im,(X1+x1, y1+20),(x1, y1+20),(0,0,255),2,1,0,0.03)
-        cv2.putText(im,"X1 : " +str(X1),(X1+x1+20, y1+30),cv2.FONT_HERSHEY_SIMPLEX,1,(0,0,255),3)
+        cv2.putText(im,"X1 : " +str(round(X1*0.19,1))+str(" mm"),(X1+x1+20, y1+30),cv2.FONT_HERSHEY_SIMPLEX,1,(0,0,255),3)
 
         ####Task 4 : Surface of the fish
         S1 = np.sum(np.sum(1 - ROIBW[:, 1:X1]))
@@ -128,7 +130,7 @@ def updateImage():
 
         print('D1 is: ' + str(D1))
 
-        cv2.putText(im,"D1 : " +str(D1),(D1index+x1+20, y1+250),cv2.FONT_HERSHEY_SIMPLEX,1,(200,0,255),3)
+        cv2.putText(im,"D1 : " +str(round(D1*0.19,1))+str(" mm"),(D1index+x1+20, y1+250),cv2.FONT_HERSHEY_SIMPLEX,1,(200,0,255),3)
 
         ###Task 6 : Size of the head
         for j in range(BW.shape[1]):
@@ -141,13 +143,14 @@ def updateImage():
         cv2.line(im,(X2+x1, y1),(X2+x1, y2),(255,0,0),1)
         cv2.arrowedLine(im,(x1, y2),(X2+x1, y2),(0,0,255),2,1,0,0.04)
         cv2.arrowedLine(im,(X2+x1, y2),(x1, y2),(0,0,255),2,1,0,0.04)
-        # cv2.putText(im,"X2 : " +str(abs(X2)),(X2+x1+20, y2+40),cv2.FONT_HERSHEY_SIMPLEX,1,(0,0,255),3)
+        cv2.putText(im,"X2 : " +str(abs(round(X2*0.19,1)))+str(" mm"),(X2+x1+20, y2+40),cv2.FONT_HERSHEY_SIMPLEX,1,(0,0,255),3)
         # self.updateImage(im)
         last_frame = im
         if captured_data == None:
-            captured_data = '{ "length": '+str(X1)+', "height": '+str(D1)+', "head": '+str(X2)+', "tail_trigger": '+str(Z1)+' }'
+            captured_data = '{ "length": '+str(round(X1*0.19,1))+', "height": '+str(round(D1*0.19,1))+', "head": '+str(abs(round(X2*0.19,1)))+', "tail_trigger": '+str(round(Z1*0.19,1))+' }'
         
         captured = False
+#        ios.flash(False)
         frameReadyCallback()
         # return im 
         return frame

@@ -14,18 +14,22 @@ READING_MODE = __WEIGHT_MODE
 isCalibrating = False
 
 # Modbus address 
-__CMDREG = 0x05
-__NETCALREG = 0x24
-__NETREG = 0x08
+__CMDREG = 0x05 # 5
+__NETCALREG = 0x24 # 36
+__NETREG = 0x0A # 8
+__GROSSREG = 0x08 # 9
 
 # Command register
-__CMD_CALIB_TARE = 0x64
-__CMD_SAVEFIRST = 0x65
-__CMD_SAVENEXT = 0x6A
+__CMD_CALIB_TARE = 0x64 # 100
+__CMD_TARE_SEMI = 0x07 
+__CMD_ZERO = 0x08
+__CMD_SAVEFIRST = 0x65 # 101
+__CMD_SAVENEXT = 0x6A # 106
 __CMD_TARE = 0x48 # 72
 
 # Serial port settings
 PORT = '/dev/ttyUSB0'
+# PORT = '/dev/ttyS0'
 BAUDRATE = 9600
 BYTESIZE = serial.EIGHTBITS
 PARITY = serial.PARITY_NONE
@@ -59,26 +63,28 @@ def isOnTensionMode():
     return READING_MODE == __TENSION_MODE
 
 def enterToTensionTest():
-    global READING_MODE
+    global READING_MODE, isCalibrating
+    isCalibrating = False
     READING_MODE = __TENSION_MODE
 
 def enterToWeightMode():
-    global READING_MODE
+    global READING_MODE, isCalibrating
+    isCalibrating = False
     READING_MODE = __WEIGHT_MODE
 
 def setZero():
     print("Setting to Zero")
-    raw_weight = readWeight()
-    print("raw weight: ", raw_weight)
-    sample_weight_h = raw_weight // 65536  # High register value (0x0000)
-    sample_weight_l = raw_weight % 65536  # Low register value (0x2710)
-    instrument.write_registers(__NETCALREG, [sample_weight_h, sample_weight_l])
-    # instrument.write_register(REG_CMD, 0xD3)
+    instrument.write_register(__CMDREG, __CMD_ZERO)
     # answerStatus()
     
-def setTare():
-    print("Tare")
-    instrument.write_register(__CMDREG, __CMD_TARE)
+def setTare(is_belly):
+    if is_belly:
+        print("Tare belly")
+    else:
+        print("Tare")
+
+    calibrating_instrument = (instrument2 if is_belly else instrument)
+    calibrating_instrument.write_register(__CMDREG, __CMD_TARE_SEMI)
     # answerStatus()
     
 def readWeight():
@@ -87,7 +93,7 @@ def readWeight():
         return 0
     weight_modbus = instrument.read_long(__NETREG, byteorder=3)
     # print("Weight: ", weight_modbus)
-    return weight_modbus
+    return weight_modbus/10
 
 def readTenstion():
     global isCalibrating
@@ -95,12 +101,12 @@ def readTenstion():
         return 0
     belly_tention = instrument2.read_long(__NETREG, byteorder=3)
     # print("Tension: ", belly_tention)
-    return belly_tention
+    return belly_tention/10
 
 def physical_calibration():
     print("Zero calibrating : Don't put anything on the checkweigher \n Press Enter to start")
 
-    setTare()
+    instrument.write_register(__CMDREG, __CMD_CALIB_TARE)
 
     input("1. Place the 1Kg calibration object \nand press Enter to continue : ") 
       
@@ -123,6 +129,7 @@ def physical_calibration():
     instrument.write_register(__CMDREG, __CMD_SAVENEXT)
 
 def remote_calibration(step, args):
+    global isCalibrating
        # print variable type
     # print(type(step) , type(args))
     calibrating_instrument = instrument
@@ -135,17 +142,22 @@ def remote_calibration(step, args):
         # instrument.write_register
 
     elif(step == 2):
-       calibrating_instrument.write_register(__CMDREG, __CMD_CALIB_TARE)
+        print("Tare")
+        calibrating_instrument.write_register(__CMDREG, __CMD_CALIB_TARE)
         # answerStatus()
     
     elif(step == 3):
+        print("saving calibration points")
         sample_weight_h = 0x0000  # High register value (0x0000)
         sample_weight_l = 0x2710  # Low register value (0x2710)
         calibrating_instrument.write_registers(__NETCALREG, [sample_weight_h, sample_weight_l])
+        calibrating_instrument.write_register(__CMDREG, __CMD_SAVEFIRST)
         # answerStatus()
 
     elif(step == 4):
-        calibrating_instrument.write_register(__CMDREG, __CMD_SAVEFIRST)
+        print("bye")
+        isCalibrating = False
+
         # answerStatus()
  
         
