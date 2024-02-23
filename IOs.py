@@ -1,5 +1,6 @@
 import pigpio
 import time
+import threading
 import IO_map as io_map
  
 pi = pigpio.pi()
@@ -17,6 +18,19 @@ def laser(value):
 
 def flash(value):
     pi.write(io_map.__FLASH_PIN, value)
+
+def timeredFlash():
+    flash(True)   # Encender flash
+    laser(False)  # Apagar láser
+
+    # Define una función que apaga el flash y enciende el láser
+    def toggle_flash_laser():
+        flash(False)  # Apagar flash
+        laser(True)   # Encender láser
+
+    # Iniciar un temporizador que llama a la función toggle_flash_laser después de 0.5 segundos
+    temporizer = threading.Timer(1, toggle_flash_laser)
+    temporizer.start()
  
 # while True:
 #     for index in range(len(inputs)):

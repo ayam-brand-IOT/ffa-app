@@ -1,6 +1,5 @@
 import cv2
 import json
-import time
 import keyboard
 import IOs as ios
 import imageProcess
@@ -96,8 +95,6 @@ def get_analysis_data(data):
 
 @socketio.event
 def capture(data):
-    ios.timeredFlash()
-    time.sleep(0.5)
     print("capturing")
     imageProcess.handle_capture(frameIsReady)
 
@@ -114,13 +111,11 @@ def reset_defects(data):
 @socketio.event
 def laser(data):
     print("laser")
-    # ios.laser()
+    ios.laser()
 
 @socketio.on('connect')
 def connect(auth):
     print("Client connected")
-    ios.laser(True)
-    ios.flash(False)
     # print('Client connected')
     # keyboard.set_callback(update_status)
     # global net_thread

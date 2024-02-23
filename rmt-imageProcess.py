@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
+import time
 import math
 import json
-import time
 import IOs as ios
 
 cap = cv2.VideoCapture(0)
@@ -32,8 +32,9 @@ img_counter = 0
 def handle_capture(callback):
     global captured, frameReadyCallback
     print("capture")
-    frameReadyCallback = callback
     captured = True
+    ios.flash(True)
+    frameReadyCallback = callback
 
 def getAnalyzedImage():
     return last_frame
@@ -51,15 +52,12 @@ def handle_reset():
 
 def updateImage():
     global captured, img_counter, cap, last_frame, x1, captured_data, frameReadyCallback
-    if captured:
-        # ios.flash(True)
-        # ios.laser(False)
-        # time.sleep(10.5)
-        print("Capturing image")
-
-        ret, frame = cap.read()
-        frame = cv2.resize(frame, (1000, 650))
-
+    ret, frame = cap.read()
+    frame = cv2.resize(frame, (1000, 650))
+    #  cap.release()
+    # if captured and not pause_image:
+    if captured: 
+        ios.flash(False)
         img_name = __MAIN_PATH__+"{}.png".format(img_counter)
         cv2.imwrite(img_name, frame)
         print("{} written!".format(img_name))
@@ -150,18 +148,12 @@ def updateImage():
             captured_data = '{ "length": '+str(round(X1*0.19,1))+', "height": '+str(round(D1*0.19,1))+', "head": '+str(abs(round(X2*0.19,1)))+', "tail_trigger": '+str(round(Z1*0.19,1))+' }'
         
         captured = False
+#        ios.flash(False)
         frameReadyCallback()
         # return im 
         return frame
         
-
     elif not captured:
-
-        ret, frame = cap.read()
-        frame = cv2.resize(frame, (1000, 650))
-    #  cap.release()
-    # if captured and not pause_image:
-        
         # self.updateImage(frame)
         return frame
     
