@@ -141,6 +141,8 @@ def disconnect():
 def video_stream():
     while True:
         frame = imageProcess.updateImage()
+        cv2.line(frame,(200, 0),(200, 1000),(255,0,0),1)
+        cv2.line(frame,(0, 330),(1000, 330),(255,0,0),1)
         ret, buffer = cv2.imencode('.jpeg',frame)
         yield (b' --frame\r\n' b'Content-type: imgae/jpeg\r\n\r\n' + buffer.tobytes() +b'\r\n')
 
