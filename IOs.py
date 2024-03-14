@@ -29,7 +29,7 @@ def timeredFlash():
         laser(True)   # Encender láser
 
     # Iniciar un temporizador que llama a la función toggle_flash_laser después de 0.5 segundos
-    temporizer = threading.Timer(1, toggle_flash_laser)
+    temporizer = threading.Timer(2, toggle_flash_laser)
     temporizer.start()
  
 # while True:

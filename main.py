@@ -97,7 +97,7 @@ def get_analysis_data(data):
 @socketio.event
 def capture(data):
     ios.timeredFlash()
-    time.sleep(0.5)
+    time.sleep(1)
     print("capturing")
     imageProcess.handle_capture(frameIsReady)
 
