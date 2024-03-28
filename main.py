@@ -2,7 +2,7 @@ import cv2
 import json
 import time
 import keyboard
-import IOs as ios
+# import IOs as ios
 import imageProcess
 import TLB_MODBUS as net
 from threading import Lock
@@ -96,7 +96,7 @@ def get_analysis_data(data):
 
 @socketio.event
 def capture(data):
-    ios.timeredFlash()
+    # ios.timeredFlash()
     time.sleep(1)
     print("capturing")
     imageProcess.handle_capture(frameIsReady)
@@ -114,13 +114,12 @@ def reset_defects(data):
 @socketio.event
 def laser(data):
     print("laser")
-    # ios.laser()
 
 @socketio.on('connect')
 def connect(auth):
     print("Client connected")
-    ios.laser(True)
-    ios.flash(False)
+    # ios.laser(True)
+    # ios.flash(False)
     # print('Client connected')
     # keyboard.set_callback(update_status)
     # global net_thread
@@ -170,6 +169,20 @@ def index(path):
 # def reset():
 #     imageProcess.handle_reset()
 #     return "reset"
+
+@app.route('/length_calibration', methods=['POST'])
+def length_calibration():
+    data = request.get_json()
+    print(data)
+    imageProcess.write_px_mm_ratio(data['ratio'])
+    return "ok"
+
+@app.route('/calibrate_zoi', methods=['POST'])
+def calibrate_zoi():
+    data = request.get_json()
+    print(data)
+    imageProcess.writeZOI(data)
+    return "ok"
 
 @app.route('/video_feed')
 def video_feed():

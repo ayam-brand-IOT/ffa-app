@@ -3,7 +3,6 @@ import numpy as np
 import math
 import json
 import time
-import IOs as ios
 
 cap = cv2.VideoCapture(0)
 
@@ -12,6 +11,8 @@ __CAMERA_WIDTH__ = 550
 __CAMERA_HEIGTH__ = math.floor(__CAMERA_WIDTH__/__RATIO__)
 __FRAMESIZE__ = (1000, 650)
 __MAIN_PATH__ ="./muestras/opencv_frame_" # path to save images
+
+__CONFIG_PATH__ = "./vision_config.json"
 
 last_frame = None
 captured_data = None
@@ -22,6 +23,21 @@ zoi_x1 = 40
 zoi_y1 = 100
 zoi_x2 = 500
 zoi_y2 = 500
+
+def loadConfig():
+    try:
+        with open(__CONFIG_PATH__, 'r') as archivo:
+            config = json.load(archivo)
+        global zoi_x1, zoi_y1, zoi_x2, zoi_y2, coef_calibration
+        zoi_x1, zoi_y1 = config['zoi'][0]['x'], config['zoi'][0]['y']
+        zoi_x2, zoi_y2 = config['zoi'][1]['x'], config['zoi'][1]['y']
+        coef_calibration = config['ppmm']
+    except Exception as e:
+        print(f"Error al cargar la configuración: {e}")
+    
+
+loadConfig()
+
 captured = False
 # pause_image = False
 ZOI_start = [zoi_x1, zoi_y1]
@@ -31,6 +47,33 @@ lytho = 1.2  # user threshold 1.2
 img_counter = 0
 zero_line = 200
 offset = 10
+
+def write_px_mm_ratio(ratio):
+    global coef_calibration
+    coef_calibration = ratio
+    print("set ratio: ", ratio)
+    try:
+        with open(__CONFIG_PATH__, 'r') as archivo:
+            config = json.load(archivo)
+        config['ppmm'] = ratio
+        with open(__CONFIG_PATH__, 'w') as archivo:
+            json.dump(config, archivo, indent=4)
+    except Exception as e:
+        print(f"Error writting px/mm: {e}")
+
+def writeZOI(points):
+    global zoi_x1, zoi_y1, zoi_x2, zoi_y2
+    zoi_x1, zoi_y1 = points[0]['x'], points[0]['y']
+    zoi_x2, zoi_y2 = points[1]['x'], points[1]['y']
+    print("set zoi: ", points)
+    try:
+        with open(__CONFIG_PATH__, 'r') as archivo:
+            config = json.load(archivo)
+        config['zoi'] = points
+        with open(__CONFIG_PATH__, 'w') as archivo:
+            json.dump(config, archivo, indent=4)
+    except Exception as e:
+        print(f"Error writting ZOI: {e}")
 
 def handle_capture(callback):
     global captured, frameReadyCallback
