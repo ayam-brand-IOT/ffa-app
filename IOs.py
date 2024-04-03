@@ -1,38 +1,38 @@
-import pigpio
-import time
-import threading
+from gpiozero import LED
+from time import sleep
+from threading import Timer
 import IO_map as io_map
- 
-pi = pigpio.pi()
-laser_state = False
- 
-for index in range(len(io_map.inputs)):
-    pi.set_mode(io_map.inputs[index], pigpio.INPUT)
-    pi.set_mode(io_map.outputs[index], pigpio.OUTPUT)
 
-def laser(value):
-    global laser_state
+# Initialize laser and flash as LEDs
+laser = LED(io_map.__LASER_PIN)
+flash = LED(io_map.__FLASH_PIN)
 
-    laser_state = not laser_state
-    pi.write(io_map.__LASER_PIN, value)
+# Function to toggle the laser state
+def toggle_laser():
+    if laser.is_lit:
+        laser.off()
+    else:
+        laser.on()
 
-def flash(value):
-    pi.write(io_map.__FLASH_PIN, value)
+def set_laser(value):
+    laser.value = value
 
-def timeredFlash():
-    flash(True)   # Encender flash
-    laser(False)  # Apagar láser
+def set_flash(value):
+    flash.value = value
 
-    # Define una función que apaga el flash y enciende el láser
+# Function to flash the LED and then toggle the laser after a delay
+def timered_flash():
+    flash.on()  # Turn on flash
+    laser.off()  # Turn off laser
+
+    # Define a function that toggles the flash and the laser
     def toggle_flash_laser():
-        flash(False)  # Apagar flash
-        laser(True)   # Encender láser
+        flash.off()  # Turn off flash
+        toggle_laser()  # Toggle the laser state
 
-    # Iniciar un temporizador que llama a la función toggle_flash_laser después de 0.5 segundos
-    temporizer = threading.Timer(2, toggle_flash_laser)
-    temporizer.start()
- 
-# while True:
-#     for index in range(len(inputs)):
-#         pi.write(outputs[index], pi.read(inputs[index]))
-# pi.stop()
+    # Start a timer to call the toggle_flash_laser function after 2 seconds
+    timer = Timer(2, toggle_flash_laser)
+    timer.start()
+
+# Sample usage of the timered_flash function
+timered_flash()

@@ -23,15 +23,17 @@ zoi_x1 = 40
 zoi_y1 = 100
 zoi_x2 = 500
 zoi_y2 = 500
+Z1 = 40  # Size of the tail we want
 
 def loadConfig():
     try:
         with open(__CONFIG_PATH__, 'r') as archivo:
             config = json.load(archivo)
-        global zoi_x1, zoi_y1, zoi_x2, zoi_y2, coef_calibration
-        zoi_x1, zoi_y1 = config['zoi'][0]['x'], config['zoi'][0]['y']
-        zoi_x2, zoi_y2 = config['zoi'][1]['x'], config['zoi'][1]['y']
+        global zoi_x1, zoi_y1, zoi_x2, zoi_y2, coef_calibration, Z1
+        zoi_x1, zoi_y1 = math.floor(config['zoi'][0]['x']), math.floor(config['zoi'][0]['y'])
+        zoi_x2, zoi_y2 = math.floor(config['zoi'][1]['x']), math.floor(config['zoi'][1]['y'])
         coef_calibration = config['ppmm']
+        Z1 = math.floor(config['tailTrigger'])
     except Exception as e:
         print(f"Error al cargar la configuración: {e}")
     
@@ -42,7 +44,6 @@ captured = False
 # pause_image = False
 ZOI_start = [zoi_x1, zoi_y1]
 ZOI_end = [zoi_x2, zoi_y2]
-Z1 = 40  # Size of the tail we want
 lytho = 1.2  # user threshold 1.2
 img_counter = 0
 zero_line = 200
@@ -63,8 +64,8 @@ def write_px_mm_ratio(ratio):
 
 def writeZOI(points):
     global zoi_x1, zoi_y1, zoi_x2, zoi_y2
-    zoi_x1, zoi_y1 = points[0]['x'], points[0]['y']
-    zoi_x2, zoi_y2 = points[1]['x'], points[1]['y']
+    zoi_x1, zoi_y1 = math.floor(points[0]['x']), math.floor(points[0]['y'])
+    zoi_x2, zoi_y2 = math.floor(points[1]['x']), math.floor(points[1]['y'])
     print("set zoi: ", points)
     try:
         with open(__CONFIG_PATH__, 'r') as archivo:
