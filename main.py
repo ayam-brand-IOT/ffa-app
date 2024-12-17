@@ -45,6 +45,7 @@ def update_net_status():
             socketio.emit('weight_update', net.readWeight())
             socketio.sleep(.5)
 
+
 ############################################ SocketIO Handlers ############################################
 
 @socketio.event
