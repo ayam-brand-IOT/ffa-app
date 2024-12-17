@@ -55,7 +55,7 @@
 
 2. **Clone the Repository**:
    ```bash
-   git clone https://github.com/your_org/ffa-app.git
+   git clone https://github.com/ayam-brand-IOT/ffa-app.git
    cd ffa-app
    ```
 
@@ -64,24 +64,44 @@
    pipenv install
    ```
 
-4. **Activate the Virtual Environment**:
+4. **Build and Add the UI**:
+
+   The **UI** must be built from the `ffa-view` repository before running `ffa-app`. Follow these steps:
+
+   1. Clone the `ffa-view` repository:
+      ```bash
+      git clone https://github.com/ayam-brand-IOT/ffa-view
+      cd ffa-view
+      ```
+
+   2. Build the UI using npm:
+      ```bash
+      npm install
+      npm run build
+      ```
+
+   3. Copy the contents of the `dist` folder to the `ffa-app` UI directory:
+      ```bash
+      cp -r dist/* /path/to/ffa-app/ui
+      ```
+
+5. **Activate the Virtual Environment**:
    ```bash
    pipenv shell
    ```
 
-5. **Set Up Environment Variables**:  
+6. **Set Up Environment Variables**:  
    Create a `.env` file for configurations:
    ```
    RS485_PORT=/dev/ttyUSB0
    WEBCAM_DEVICE=/dev/video0
-   FLASH_PIN=17
-   LASER_PIN=27
-   UI_PORT=8000
+   FLASH_PIN=23
+   LASER_PIN=22
    ```
 
-6. **Run the Application**:
+7. **Run the Application**:
    ```bash
-   python main.py --debug
+   python main.py
    ```
 
 The UI will be available at `http://<raspberry_ip>:8000`.
@@ -92,13 +112,6 @@ The UI will be available at `http://<raspberry_ip>:8000`.
    ```bash
    journalctl -u ffa-app.service -f
    ```
-
-- **Enable Debug Mode**:
-   Run with the `--debug` flag to display detailed logs.
-
-- **Hardware Debugging**:
-   - Check RS-485 connectivity using `dmesg`.
-   - Verify GPIO pin functionality with a multimeter or test script.
 
 ## Dependency List (Pipfile)
 
@@ -133,9 +146,12 @@ Below are the main production dependencies:
    git pull origin main
    ```
 
-2. **Install New Dependencies**:
+2. **Rebuild the UI** (if the `ffa-view` code has changed):
    ```bash
-   pipenv install
+   cd /path/to/ffa-view
+   npm install
+   npm run build
+   cp -r dist/* /path/to/ffa-app/ui
    ```
 
 3. **Restart the Service**:
