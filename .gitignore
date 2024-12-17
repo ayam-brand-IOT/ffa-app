@@ -1,5 +1,6 @@
 # Ignorar la carpeta dist
-dist/
+dist/*
+!dist/.gitkeep
 
 # Ignorar archivos ocultos de macOS
 .DS_Store
