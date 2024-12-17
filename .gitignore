@@ -1,0 +1,30 @@
+# Ignorar la carpeta dist
+dist/
+
+# Ignorar archivos ocultos de macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+
+# Ignorar archivos compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Ignorar entornos virtuales
+venv/
+env/
+.venv/
+.env/
+.build/
+
+# Ignorar paquetes construidos
+build/
+
+# Archivos de configuración del editor/IDE
+.vscode/
+.idea/
+
