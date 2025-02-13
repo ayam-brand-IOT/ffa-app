@@ -1,7 +1,6 @@
 import cv2
 import json
 import time
-import keyboard
 # import IOs as ios
 import imageProcess
 import TLB_MODBUS as net
@@ -21,7 +20,6 @@ app.config['SECRET_KEY'] = 'secret!'
 CORS(app)
 
 socketio = SocketIO(app,cors_allowed_origins="*", async_mode='threading')
-keyboard_thread = None
 net_thread = None
 thread_lock = Lock()
 
@@ -109,7 +107,6 @@ def reset(data):
 @socketio.event
 def reset_defects(data):
     print("reseting defects")
-    keyboard.reset_keys()
 
 @socketio.event
 def laser(data):
