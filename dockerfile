@@ -1,21 +1,23 @@
-# Base image for Python
 FROM python:3.11-slim
 
-# Set the working directory
 WORKDIR /app
 
-# Copy dependencies
-COPY Pipfile Pipfile.lock /app/
+# Instalar dependencias del sistema necesarias para OpenCV y otras librerías
+RUN apt-get update && apt-get install -y \
+    libgl1 \
+    libglib2.0-0
 
-# Install Pipenv and dependencies
+# Copiar Pipfile y Pipfile.lock
+COPY Pipfile Pipfile.lock ./
+
+# Instalar pipenv y las dependencias de Python
 RUN pip install pipenv && pipenv install --system --deploy
 
-# Copy the application code
-COPY . /app
+# Copiar el código de la aplicación
+COPY . .
 
-# Expose the port for the web server
+# Exponer el puerto del servidor
 EXPOSE 8000
 
-# Command to run the application
+# Comando para iniciar la aplicación
 CMD ["python", "main.py"]
-
