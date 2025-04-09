@@ -9,6 +9,66 @@
       "y": 360.7265625
     }
   ],
+  "species_params": [
+    {
+      "name": "mackerel",
+      "types": [
+        {
+          "typeName": "WR",
+          "parameters": {
+            "A": 10,
+            "B": 15,
+            "C": 20
+          }
+        },
+        {
+          "typeName": "HG",
+          "parameters": {
+            "A": 12,
+            "B": null,
+            "C": 24
+          }
+        },
+        {
+          "typeName": "HGT",
+          "parameters": {
+            "A": null,
+            "B": null,
+            "C": 30
+          }
+        }
+      ]
+    },
+    {
+      "name": "sardine",
+      "types": [
+        {
+          "typeName": "WR",
+          "parameters": {
+            "A": 5,
+            "B": 10,
+            "C": 15
+          }
+        },
+        {
+          "typeName": "HG",
+          "parameters": {
+            "A": 6,
+            "B": null,
+            "C": 18
+          }
+        },
+        {
+          "typeName": "HGT",
+          "parameters": {
+            "A": null,
+            "B": null,
+            "C": 20
+          }
+        }
+      ]
+    }
+  ],
   "ppmm": 0.23,
   "tailTrigger": 40
 }

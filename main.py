@@ -1,60 +1,56 @@
+DEV_MODE = True
+
+if DEV_MODE:
+    import TLB_MODBUS_dev as net
+else:
+    import TLB_MODBUS as net
+
 import cv2
 import json
 import time
-# import IOs as ios
 import imageProcess
-import TLB_MODBUS as net
 from threading import Lock
 from flask_cors import CORS
 from flask_socketio import SocketIO, send, emit
-from flask import Flask, render_template, Response, stream_with_context, request, copy_current_request_context
-
+from flask import Flask, render_template, Response, request, stream_with_context
 
 async_mode = None
 
 app = Flask(__name__,
-            static_folder = "./dist/static",
-            template_folder = "./dist")
-
+            static_folder="./dist/static",
+            template_folder="./dist")
 app.config['SECRET_KEY'] = 'secret!'
 CORS(app)
 
-socketio = SocketIO(app,cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 net_thread = None
 thread_lock = Lock()
 
-
-################################################ callbacks  ################################################
+######################################## Callbacks ########################################
 
 def update_status(keys):
-    # print(keys)
     socketio.emit('indicator_update', keys)
 
 def frameIsReady():
     socketio.emit('frame_ready', "frame ready")
 
 def update_net_status():
-     while True:
-        # print("net status: ", net.readWeight())
+    while True:
         if net.isOnTensionMode():
             socketio.emit('tension_update', net.readTenstion())
-            socketio.sleep(.025)
+            socketio.sleep(0.025)
         else:
             socketio.emit('weight_update', net.readWeight())
-            socketio.sleep(.5)
+            socketio.sleep(0.5)
 
-############################################ SocketIO Handlers ############################################
+######################################## SocketIO Handlers ########################################
 
 @socketio.event
 def calibrate_load_cell(data):
     net.isCalibrating = True
     step = data['step']
-    args = data['args'] 
-
-    # print values
-    print("calibrate load cell step: ", step , " args: ", args)
-
-    print("calibrate load cell")
+    args = data['args']
+    print("calibrate load cell step:", step, " args:", args)
     net.remote_calibration(step, args)
     emit('calibration_step_commited', "step commited")
 
@@ -94,7 +90,6 @@ def get_analysis_data(data):
 
 @socketio.event
 def capture(data):
-    # ios.timeredFlash()
     time.sleep(1)
     print("capturing")
     imageProcess.handle_capture(frameIsReady)
@@ -112,74 +107,116 @@ def reset_defects(data):
 def laser(data):
     print("laser")
 
+# Handler para actualizar parámetros vía SocketIO
+@socketio.event
+def set_fish_data(data):
+    """
+    Recibe mediante SocketIO un objeto con la estructura:
+    { "species": "mackerel", "type": "HG" }
+    y actualiza los parámetros en imageProcess.
+    """
+    print("set fish data recibido:", data)
+    # Si viene como string, se parsea
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except Exception as ex:
+            print("Error parseando datos:", ex)
+            emit("fishParamsResponse", {"error": "Formato inválido"})
+            return
+    result = update_fish_params_func(data)
+    # emit("fishParamsResponse", result)
+
 @socketio.on('connect')
 def connect(auth):
     print("Client connected")
-    # ios.laser(True)
-    # ios.flash(False)
-    # print('Client connected')
-    # keyboard.set_callback(update_status)
-    # global net_thread
-    # with thread_lock:
-        # if net_thread is None:
-            # keyboard_thread = socketio.start_background_task(keyboard.async_key_check)
-            #et_thread = socketio.start_background_task(update_net_status)
-            
-    # emit('indicator_update', keyboard.get_keys())
 
 @socketio.on('disconnect')
 def disconnect():
-    print('Client disconnected')
+    print("Client disconnected")
 
+######################################## Función Común para Actualizar Fish Params ########################################
 
-############################################## Route Handlers ##############################################
+def update_fish_params_func(data):
+    """
+    Recibe un diccionario con la selección:
+      { "species": "mackerel", "type": "HG" }
+    y actualiza los parámetros de procesamiento mediante imageProcess.update_fish_parameters.
+    Retorna un diccionario con el resultado.
+    """
+    species_name = data.get("species")
+    type_name = data.get("type")
+    print("Solicitud para actualizar parámetros para especie:", species_name, "y tipo:", type_name)
+    
+    CONFIG_FILE = "./vision_config.json"
+    try:
+        with open(CONFIG_FILE, "r") as f:
+            config = json.load(f)
+    except Exception as e:
+        error_msg = f"Error al leer vision_config.json: {e}"
+        print(error_msg)
+        return {"error": error_msg}
+    
+    species_list = config.get("species_params", [])
+    for species in species_list:
+        if species.get("name") == species_name:
+            for tipo in species.get("types", []):
+                if tipo.get("typeName") == type_name:
+                    params = tipo.get("parameters")
+                    # Llama a la función en imageProcess para actualizar los parámetros internamente
+                    imageProcess.update_fish_parameters(params)
+                    print("Parámetros actualizados en imageProcess:", params)
+                    return {"status": "ok", "parameters": params}
+    return {"error": "Especie o tipo no encontrado"}
+
+######################################## Endpoints HTTP ########################################
 
 def video_stream():
     while True:
         frame = imageProcess.updateImage()
-        cv2.line(frame,(200, 0),(200, 1000),(255,0,0),1)
-        cv2.line(frame,(0, 330),(1000, 330),(255,0,0),1)
-        ret, buffer = cv2.imencode('.jpeg',frame)
-        yield (b' --frame\r\n' b'Content-type: imgae/jpeg\r\n\r\n' + buffer.tobytes() +b'\r\n')
+        cv2.line(frame, (200, 0), (200, 1000), (255, 0, 0), 1)
+        cv2.line(frame, (0, 330), (1000, 330), (255, 0, 0), 1)
+        ret, buffer = cv2.imencode('.jpeg', frame)
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
 def analyzed_image():
     frame = imageProcess.getAnalyzedImage()
-    ret, buffer = cv2.imencode('.jpeg',frame)
+    ret, buffer = cv2.imencode('.jpeg', frame)
     socketio.emit('analysis_data', imageProcess.get_analysis_data())
-    yield (b' --frame\r\n' b'Content-type: imgae/jpeg\r\n\r\n' + buffer.tobytes() +b'\r\n')
-
+    yield (b'--frame\r\n'
+           b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
-# @app.route("/")
 def index(path):
-    global async_mode
-
     return render_template("index.html", async_mode=socketio.async_mode)
-
-# @app.route("/capture")
-# def capture():
-#     imageProcess.handle_capture()
-#     return "captured"
-
-# @app.route("/reset")
-# def reset():
-#     imageProcess.handle_reset()
-#     return "reset"
 
 @app.route('/length_calibration', methods=['POST'])
 def length_calibration():
     data = request.get_json()
-    print(data)
+    print("Length calibration data:", data)
     imageProcess.write_px_mm_ratio(data['ratio'])
     return "ok"
 
 @app.route('/calibrate_zoi', methods=['POST'])
 def calibrate_zoi():
     data = request.get_json()
-    print(data)
+    print("Calibrate ZOI data:", data)
     imageProcess.writeZOI(data)
     return "ok"
+
+@app.route('/update_fish_params', methods=['POST'])
+def update_fish_params_route():
+    """
+    Endpoint HTTP para actualizar los parámetros de la especie y tipo seleccionados.
+    """
+    data = request.get_json()
+    result = update_fish_params_func(data)
+    if result.get("status") == "ok":
+        return json.dumps(result), 200, {"Content-Type": "application/json"}
+    else:
+        return json.dumps(result), 404, {"Content-Type": "application/json"}
 
 @app.route('/video_feed')
 def video_feed():
@@ -189,6 +226,7 @@ def video_feed():
 def getAnalyzedImage():
     return Response(analyzed_image(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-################################################# Main #####################################################
+######################################## Main ########################################
 
-socketio.run(app, host='0.0.0.0', port='3030', allow_unsafe_werkzeug=True)
+if __name__ == '__main__':
+    socketio.run(app, host='0.0.0.0', port='3030', allow_unsafe_werkzeug=True)

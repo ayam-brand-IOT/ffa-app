@@ -25,6 +25,13 @@ zoi_x2 = 500
 zoi_y2 = 500
 Z1 = 40  # Size of the tail we want
 
+# Parámetros de pescado (estos se actualizarán según la selección)
+fish_parameters = {
+    "A": None,
+    "B": None,
+    "C": None
+}
+
 def loadConfig():
     try:
         with open(__CONFIG_PATH__, 'r') as archivo:
@@ -39,6 +46,32 @@ def loadConfig():
     
 
 loadConfig()
+
+# Función para actualizar los parámetros de pescado.
+def update_fish_parameters(params):
+    """
+    Actualiza la variable global fish_parameters con los valores nuevos.
+    Además, persiste estos valores en vision_config.json bajo la clave "current_fish_params"
+    si se desea (opcional).
+    """
+    global fish_parameters
+    fish_parameters = params
+    print("Fish parameters updated:", fish_parameters)
+    # (Opcional) Actualizar el archivo de configuración:
+    try:
+        with open(__CONFIG_PATH__, 'r') as archivo:
+            config = json.load(archivo)
+    except Exception as e:
+        print("Error al leer vision_config.json:", e)
+        config = {}
+    # Puedes elegir guardar estos parámetros en una nueva clave para referencia,
+    # por ejemplo, "current_fish_params"
+    config["current_fish_params"] = params
+    try:
+        with open(__CONFIG_PATH__, 'w') as archivo:
+            json.dump(config, archivo, indent=4)
+    except Exception as e:
+        print("Error al escribir los fish parameters en vision_config.json:", e)
 
 captured = False
 # pause_image = False
