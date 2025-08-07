@@ -1,11 +1,15 @@
 from gpiozero import LED
+from gpiozero.pins.lgpio import LGPIOFactory
 from time import sleep
 from threading import Timer
 import IO_map as io_map
 
+pin_factory = LGPIOFactory()
+
+
 # Initialize laser and flash as LEDs
-laser = LED(io_map.__LASER_PIN)
-flash = LED(io_map.__FLASH_PIN)
+laser = LED(io_map.__LASER_PIN, pin_factory=pin_factory)
+flash = LED(io_map.__FLASH_PIN, pin_factory=pin_factory)
 
 # Function to toggle the laser state
 def toggle_laser():
