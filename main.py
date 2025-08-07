@@ -1,4 +1,4 @@
-DEV_MODE = True
+DEV_MODE = False
 
 if DEV_MODE:
     import TLB_MODBUS_dev as net
