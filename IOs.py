@@ -39,4 +39,4 @@ def timered_flash():
     timer.start()
 
 # Sample usage of the timered_flash function
-timered_flash()
+# timered_flash()
