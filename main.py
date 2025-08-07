@@ -91,6 +91,7 @@ def get_analysis_data(data):
 
 @socketio.event
 def capture(data):
+    ios.timered_flash()
     time.sleep(1)
     print("capturing")
     imageProcess.handle_capture(frameIsReady)
@@ -131,6 +132,8 @@ def set_fish_data(data):
 @socketio.on('connect')
 def connect(auth):
     print("Client connected")
+    ios.set_laser(True)
+    ios.set_flash(False)
 
 @socketio.on('disconnect')
 def disconnect():
