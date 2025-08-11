@@ -14,6 +14,7 @@ from threading import Lock
 from flask_cors import CORS
 from flask_socketio import SocketIO, send, emit
 from flask import Flask, render_template, Response, request, stream_with_context
+import logging
 
 async_mode = None
 
@@ -23,7 +24,15 @@ app = Flask(__name__,
 app.config['SECRET_KEY'] = 'secret!'
 CORS(app)
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='threading',
+    logger=False,
+    engineio_logger=False,
+)
 net_thread = None
 thread_lock = Lock()
 
