@@ -32,6 +32,7 @@ socketio = SocketIO(
     async_mode='threading',
     logger=False,
     engineio_logger=False,
+    transports=['polling'],
 )
 net_thread = None
 thread_lock = Lock()
