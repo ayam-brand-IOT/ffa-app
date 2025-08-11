@@ -5,12 +5,17 @@ import json
 import time
 import os
 
-# Initialize camera lazily to avoid errors when the device is missing
+# Initialize camera lazily to avoid errors when the device is missing. Track
+# when the camera is unavailable so we do not spam warnings by retrying on
+# every frame.
 cap = None
+_camera_unavailable = False
 
 def _open_camera():
     """Try to open the configured camera and return True on success."""
-    global cap
+    global cap, _camera_unavailable
+    if _camera_unavailable:
+        return False
     if cap is not None and cap.isOpened():
         return True
     source = os.environ.get("CAMERA_INDEX", "0")
@@ -22,7 +27,9 @@ def _open_camera():
     cap = cv2.VideoCapture(source)
     if not cap.isOpened():
         print(f"Warning: cannot open camera {source}")
+        cap.release()
         cap = None
+        _camera_unavailable = True
         return False
     return True
 
