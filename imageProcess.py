@@ -3,8 +3,28 @@ import numpy as np
 import math
 import json
 import time
+import os
 
-cap = cv2.VideoCapture(0)
+# Initialize camera lazily to avoid errors when the device is missing
+cap = None
+
+def _open_camera():
+    """Try to open the configured camera and return True on success."""
+    global cap
+    if cap is not None and cap.isOpened():
+        return True
+    source = os.environ.get("CAMERA_INDEX", "0")
+    # Allow either numeric index or device path
+    try:
+        source = int(source)
+    except ValueError:
+        pass
+    cap = cv2.VideoCapture(source)
+    if not cap.isOpened():
+        print(f"Warning: cannot open camera {source}")
+        cap = None
+        return False
+    return True
 
 __RATIO__ = 16/9
 __CAMERA_WIDTH__ = 550
@@ -265,6 +285,8 @@ def handle_reset():
 
 def updateImage():
     global captured, img_counter, cap, last_frame, zoi_x1, captured_data, frameReadyCallback, zero_line
+    if not _open_camera():
+        return None
     if captured:
         print("Capturing image")
 
@@ -392,6 +414,6 @@ def updateImage():
         ret, frame = cap.read()
         if not ret:
             print("Error al capturar la imagen de la cámara")
-            return
+            return None
         frame = cv2.resize(frame, (1000, 650))
         return frame
