@@ -18,7 +18,7 @@ RUN pip install pipenv && pipenv install --system --deploy
 COPY . .
 
 # Exponer el puerto del servidor
-EXPOSE 8000
+EXPOSE 3030
 
 # Comando para iniciar la aplicación
 CMD ["python", "main.py"]
