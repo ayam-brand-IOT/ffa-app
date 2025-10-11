@@ -386,17 +386,58 @@ def updateImage():
             print("La lista 'diameter' está vacía, no se puede calcular el máximo. Verifique los valores de ROIBW.")
             return
 
-        L1 = j - offset
+        L1_pixels = j - offset
         L1hgt = j
-        print('L1 is: ' + str(L1))
+        print('L1 (px) is: ' + str(L1_pixels))
+
+        B_value = 0.0
+        A_value = 0.0
+        if fish_parameters:
+            raw_B = fish_parameters.get("B")
+            if raw_B is not None:
+                try:
+                    B_value = float(raw_B)
+                except (TypeError, ValueError):
+                    B_value = 0.0
+            raw_A = fish_parameters.get("A")
+            if raw_A is not None:
+                try:
+                    A_value = float(raw_A)
+                except (TypeError, ValueError):
+                    A_value = 0.0
+
+        L1_mm = L1_pixels * coef_calibration
+        L1_adjusted_mm = L1_mm - B_value
+        L1_body_mm = L1_adjusted_mm - A_value
+        L1_body_mm = max(L1_body_mm, 0.0)
+        print('L1 adjusted (mm) is: ' + str(L1_adjusted_mm))
+        print('L1 body (mm) is: ' + str(L1_body_mm))
+
+        L1_end_x = L1hgt + zero_line
+        body_start_x = zero_line + offset
+        body_color = (138, 43, 226)
+        L1_body_pixels = 0.0
+        if coef_calibration > 0:
+            L1_body_pixels = L1_body_mm / coef_calibration
+            body_start_x = int(round(L1_end_x - L1_body_pixels))
+        body_start_x = int(max(zero_line, min(body_start_x, L1_end_x)))
 
         cv2.line(im, (L1hgt + zero_line, zoi_y1), (L1hgt + zero_line, zoi_y2), (255,0,0), 1)
         cv2.arrowedLine(im, (zero_line + offset, zoi_y1+20), (L1hgt+zero_line, zoi_y1+20), (0,0,255), 2, 1, 0, 0.03)
         cv2.arrowedLine(im, (L1hgt+zero_line, zoi_y1+20), (zero_line+offset, zoi_y1+20), (0,0,255), 2, 1, 0, 0.03)
-        cv2.putText(im, "L1 : " + str(round(L1*coef_calibration,1)) + " mm", (L1+zero_line+20, zoi_y1+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
+        cv2.putText(im, "L1 : " + str(round(L1_adjusted_mm,1)) + " mm", (L1_pixels+zero_line+20, zoi_y1+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
+
+        if L1_body_mm > 0 and body_start_x < L1_end_x:
+            cv2.line(im, (body_start_x, zoi_y1), (body_start_x, zoi_y2), body_color, 1)
+            cv2.arrowedLine(im, (body_start_x, zoi_y1+60), (L1_end_x, zoi_y1+60), body_color, 2, 1, 0, 0.03)
+            cv2.arrowedLine(im, (L1_end_x, zoi_y1+60), (body_start_x, zoi_y1+60), body_color, 2, 1, 0, 0.03)
+
+        cv2.putText(im, "B : " + str(round(B_value,1)) + " mm", (L1_pixels+zero_line+20, zoi_y1+90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,165,0), 2)
+        cv2.putText(im, "A : " + str(round(A_value,1)) + " mm", (L1_pixels+zero_line+20, zoi_y1+130), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+        cv2.putText(im, "L1_body : " + str(round(L1_body_mm,1)) + " mm", (L1_pixels+zero_line+20, zoi_y1+170), cv2.FONT_HERSHEY_SIMPLEX, 0.8, body_color, 2)
 
         # Calcular el área negra
-        S1 = np.sum(np.sum(1 - ROIBW[:, 1:L1]))
+        S1 = np.sum(np.sum(1 - ROIBW[:, 1:L1_pixels]))
         print('Black area is: ' + str(S1))
 
         # Calcular el diámetro máximo
@@ -437,7 +478,7 @@ def updateImage():
 
         last_frame = im
         
-        captured_data = '{ "length": '+str(round(L1*coef_calibration,1))+', "height": '+str(round(D1*coef_calibration,1))+', "head": '+str(abs(round(L2*coef_calibration,1)))+', "tail_trigger": '+str(round(Z1*coef_calibration,1))+' }'
+        captured_data = '{ "length": '+str(round(L1_adjusted_mm,1))+', "height": '+str(round(D1*coef_calibration,1))+', "head": '+str(abs(round(L2*coef_calibration,1)))+', "tail_trigger": '+str(round(Z1*coef_calibration,1))+' }'
 
         captured = False
         frameReadyCallback()
