@@ -3,8 +3,68 @@ import numpy as np
 import math
 import json
 import time
+import os
+from threading import Lock, Thread
 
-cap = cv2.VideoCapture(0)
+# Initialize camera lazily to avoid errors when the device is missing. Track
+# when the camera is unavailable so we do not spam warnings by retrying on
+# every frame.
+cap = None
+_camera_unavailable = False
+_frame_lock = Lock()
+_latest_frame = None
+_capture_thread = None
+
+def _open_camera():
+    """Try to open the configured camera and return True on success."""
+    global cap, _camera_unavailable
+    if _camera_unavailable:
+        return False
+    if cap is not None and cap.isOpened():
+        return True
+    source = os.environ.get("CAMERA_INDEX", "0")
+    # Allow either numeric index or device path
+    try:
+        source = int(source)
+    except ValueError:
+        pass
+    cap = cv2.VideoCapture(source)
+    if not cap.isOpened():
+        print(f"Warning: cannot open camera {source}")
+        cap.release()
+        cap = None
+        _camera_unavailable = True
+        return False
+    return True
+
+
+def _capture_loop():
+    """Background thread that continuously grabs frames from the camera."""
+    global _latest_frame
+    while True:
+        if not _open_camera():
+            time.sleep(0.5)
+            continue
+        ret, frame = cap.read()
+        if not ret:
+            time.sleep(0.1)
+            continue
+        frame = cv2.resize(frame, (1000, 650))
+        with _frame_lock:
+            _latest_frame = frame
+        time.sleep(0.03)
+
+
+def get_stream_frame():
+    """Return the most recent camera frame, starting the capture thread if needed."""
+    global _capture_thread
+    if _capture_thread is None or not _capture_thread.is_alive():
+        _capture_thread = Thread(target=_capture_loop, daemon=True)
+        _capture_thread.start()
+    with _frame_lock:
+        if _latest_frame is None:
+            return None
+        return _latest_frame.copy()
 
 __RATIO__ = 16/9
 __CAMERA_WIDTH__ = 550
@@ -264,23 +324,18 @@ def handle_reset():
 
 
 def updateImage():
-    global captured, img_counter, cap, last_frame, zoi_x1, captured_data, frameReadyCallback, zero_line
+    global captured, img_counter, last_frame, zoi_x1, captured_data, frameReadyCallback, zero_line
+    frame = get_stream_frame()
+    if frame is None:
+        return None
     if captured:
         print("Capturing image")
 
-        # Verificar si la imagen se capturó correctamente
-        ret, frame = cap.read()
-        if not ret:
-            print("Error al capturar la imagen de la cámara")
-            return
-
-        frame = cv2.resize(frame, (1000, 650))
-
-        img_name = __MAIN_PATH__+"{}.png".format(img_counter)
+        img_name = __MAIN_PATH__ + "{}.png".format(img_counter)
         cv2.imwrite(img_name, frame)
         print("{} written!".format(img_name))
 
-        im = frame
+        im = frame.copy()
         img_counter += 1
 
         img = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
@@ -381,17 +436,12 @@ def updateImage():
         cv2.putText(im, "L2 : " + str(abs(round(L2*coef_calibration,1))) + " mm", (L2+zero_line+20, zoi_y2+40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
 
         last_frame = im
-        if captured_data == None:
-            captured_data = '{ "length": '+str(round(L1*coef_calibration,1))+', "height": '+str(round(D1*coef_calibration,1))+', "head": '+str(abs(round(L2*coef_calibration,1)))+', "tail_trigger": '+str(round(Z1*coef_calibration,1))+' }'
+        
+        captured_data = '{ "length": '+str(round(L1*coef_calibration,1))+', "height": '+str(round(D1*coef_calibration,1))+', "head": '+str(abs(round(L2*coef_calibration,1)))+', "tail_trigger": '+str(round(Z1*coef_calibration,1))+' }'
 
         captured = False
         frameReadyCallback()
         return frame
 
-    elif not captured:
-        ret, frame = cap.read()
-        if not ret:
-            print("Error al capturar la imagen de la cámara")
-            return
-        frame = cv2.resize(frame, (1000, 650))
+    else:
         return frame

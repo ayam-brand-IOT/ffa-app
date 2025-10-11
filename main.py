@@ -14,6 +14,7 @@ from threading import Lock
 from flask_cors import CORS
 from flask_socketio import SocketIO, send, emit
 from flask import Flask, render_template, Response, request, stream_with_context
+import logging
 
 async_mode = None
 
@@ -23,7 +24,16 @@ app = Flask(__name__,
 app.config['SECRET_KEY'] = 'secret!'
 CORS(app)
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    async_mode='threading',
+    logger=False,
+    engineio_logger=False,
+    transports=['polling'],
+)
 net_thread = None
 thread_lock = Lock()
 
@@ -48,42 +58,52 @@ def update_net_status():
 
 @socketio.event
 def calibrate_load_cell(data):
-    net.isCalibrating = True
-    step = data['step']
-    args = data['args']
-    print("calibrate load cell step:", step, " args:", args)
-    net.remote_calibration(step, args)
+    with thread_lock:
+        net.isCalibrating = True
+        step = data['step']
+        args = data['args']
+        print("calibrate load cell step:", step, " args:", args)
+        net.remote_calibration(step, args)
     emit('calibration_step_commited', "step commited")
 
 @socketio.event
 def resume_net_update():
-    net.isCalibrating = False
+    with thread_lock:
+        net.isCalibrating = False
 
 @socketio.event
 def enter_to_tension_test(data):
-    print("enter to tension test")
+    with thread_lock:
+        print("enter to tension test")
 
 @socketio.event
 def enter_to_weight_mode(data):
-    net.enterToWeightMode()
+    with thread_lock:
+        net.enterToWeightMode()
 
 @socketio.event
 def set_zero(data):
-    net.setZero()
+    with thread_lock:
+        net.setZero()
 
 @socketio.event
 def set_tare(data):
-    net.setTare(bool(data))
+    with thread_lock:
+        net.setTare(bool(data))
 
 @socketio.event
 def update_net(data):
     print("net update")
-    socketio.emit('weight_update', net.readWeight())
+    with thread_lock:
+        weight = net.readWeight()
+    socketio.emit('weight_update', weight)
 
 @socketio.event
 def get_tension(data):
     print("tension update")
-    socketio.emit('tension_update', net.readTenstion())
+    with thread_lock:
+        tension = net.readTenstion()
+    socketio.emit('tension_update', tension)
 
 @socketio.event
 def get_analysis_data(data):
@@ -178,15 +198,25 @@ def update_fish_params_func(data):
 def video_stream():
     while True:
         frame = imageProcess.updateImage()
+        if frame is None:
+            time.sleep(0.1)
+            continue
         cv2.line(frame, (200, 0), (200, 1000), (255, 0, 0), 1)
         cv2.line(frame, (0, 330), (1000, 330), (255, 0, 0), 1)
         ret, buffer = cv2.imencode('.jpeg', frame)
+        if not ret:
+            time.sleep(0.1)
+            continue
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
 def analyzed_image():
     frame = imageProcess.getAnalyzedImage()
+    if frame is None:
+        return
     ret, buffer = cv2.imencode('.jpeg', frame)
+    if not ret:
+        return
     socketio.emit('analysis_data', imageProcess.get_analysis_data())
     yield (b'--frame\r\n'
            b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
