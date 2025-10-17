@@ -11,7 +11,7 @@
   ],
   "species_params": [
     {
-      "name": "mackerel",
+      "name": "MACK",
       "types": [
         {
           "typeName": "WR",
@@ -40,7 +40,7 @@
       ]
     },
     {
-      "name": "sardine",
+      "name": "SAR",
       "types": [
         {
           "typeName": "WR",
