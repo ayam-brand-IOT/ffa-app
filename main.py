@@ -168,7 +168,7 @@ def update_fish_params_func(data):
     y actualiza los parámetros de procesamiento mediante imageProcess.update_fish_parameters.
     Retorna un diccionario con el resultado.
     """
-    species_name = data.get("species")
+    species_name = data.get("fish_species")
     type_name = data.get("type")
     print("Solicitud para actualizar parámetros para especie:", species_name, "y tipo:", type_name)
     
