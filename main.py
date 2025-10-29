@@ -252,6 +252,119 @@ def update_fish_params_route():
     else:
         return json.dumps(result), 404, {"Content-Type": "application/json"}
 
+@app.route('/update_config', methods=['POST'])
+def update_config():
+    """
+    Endpoint HTTP para modificar los valores de configuración.
+    Puede actualizar tailTrigger y/o species_params según name y typeName.
+    
+    Formato esperado:
+    {
+        "tailTrigger": 45,  // opcional
+        "species_params": {  // opcional
+            "name": "MACK",
+            "typeName": "HG", 
+            "parameters": {
+                "A": 15,
+                "B": 18,
+                "C": 25
+            }
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return json.dumps({"error": "No data provided"}), 400, {"Content-Type": "application/json"}
+        
+        CONFIG_FILE = "./vision_config.json"
+        
+        # Leer configuración actual
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                config = json.load(f)
+        except Exception as e:
+            return json.dumps({"error": f"Error reading config file: {e}"}), 500, {"Content-Type": "application/json"}
+        
+        updated_fields = []
+        
+        # Actualizar tailTrigger si está presente
+        if "tailTrigger" in data:
+            config["tailTrigger"] = data["tailTrigger"]
+            updated_fields.append("tailTrigger")
+        
+        # Actualizar species_params si está presente
+        if "species_params" in data:
+            species_data = data["species_params"]
+            required_fields = ["name", "typeName", "parameters"]
+            
+            if not all(field in species_data for field in required_fields):
+                return json.dumps({
+                    "error": "species_params must contain name, typeName, and parameters"
+                }), 400, {"Content-Type": "application/json"}
+            
+            species_name = species_data["name"]
+            type_name = species_data["typeName"]
+            new_parameters = species_data["parameters"]
+            
+            # Buscar y actualizar la especie y tipo específicos
+            found = False
+            species_list = config.get("species_params", [])
+            
+            for species in species_list:
+                if species.get("name") == species_name:
+                    for fish_type in species.get("types", []):
+                        if fish_type.get("typeName") == type_name:
+                            fish_type["parameters"] = new_parameters
+                            found = True
+                            updated_fields.append(f"species_params.{species_name}.{type_name}")
+                            break
+                    if found:
+                        break
+            
+            if not found:
+                return json.dumps({
+                    "error": f"Species '{species_name}' with type '{type_name}' not found"
+                }), 404, {"Content-Type": "application/json"}
+        
+        # Guardar configuración actualizada
+        try:
+            with open(CONFIG_FILE, "w") as f:
+                json.dump(config, f, indent=2)
+        except Exception as e:
+            return json.dumps({"error": f"Error writing config file: {e}"}), 500, {"Content-Type": "application/json"}
+        
+        # Recargar configuración en imageProcess si es necesario
+        if "tailTrigger" in updated_fields:
+            # El tailTrigger se relee automáticamente cuando se inicializa imageProcess
+            print(f"tailTrigger updated to: {config['tailTrigger']}")
+        
+        return json.dumps({
+            "status": "success",
+            "message": f"Configuration updated successfully",
+            "updated_fields": updated_fields,
+            "config": config
+        }), 200, {"Content-Type": "application/json"}
+        
+    except Exception as e:
+        return json.dumps({"error": f"Unexpected error: {str(e)}"}), 500, {"Content-Type": "application/json"}
+
+@app.route('/get_config', methods=['GET'])
+def get_config():
+    """
+    Endpoint HTTP para obtener la configuración actual.
+    """
+    try:
+        CONFIG_FILE = "./vision_config.json"
+        
+        with open(CONFIG_FILE, "r") as f:
+            config = json.load(f)
+        
+        return json.dumps(config), 200, {"Content-Type": "application/json"}
+        
+    except Exception as e:
+        return json.dumps({"error": f"Error reading config: {str(e)}"}), 500, {"Content-Type": "application/json"}
+
 @app.route('/video_feed')
 def video_feed():
     return Response(video_stream(), mimetype='multipart/x-mixed-replace; boundary=frame')
