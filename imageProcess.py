@@ -284,7 +284,7 @@ def updateImage():
         cv2.putText(im, "Zone Of Interest", (zoi_x2-150, zoi_y2+30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,150,0), 1)
         # cv2.line(im, (zero_line, zoi_y1), (zero_line, zoi_y2), (0,0,255), 1) # red vertical line >> line of the zero
         cv2.line(im, (zero_line + B_offset, zoi_y1), (zero_line + B_offset, zoi_y2), (0,165,255), 1) # orange vertical >> head cut line
-        cv2.line(im, (zero_line + A_offset + B_offset, zoi_y1), (zero_line + A_offset + B_offset, zoi_y2), (0,255,0), 1) # green vertical line >> of the body offset
+        cv2.line(im, (zero_line + A_offset + B_offset, zoi_y1), (zero_line + A_offset + B_offset, zoi_y2), (200,200,200), 1) # grey vertical line >> of the body offset
 
         # Size of the fish from zero line to tail
         diameter = []
@@ -301,9 +301,8 @@ def updateImage():
 
         L1hgt = j
         
-        L1_start_x = zero_line
-        L1_end_x = L1hgt + zero_line
-        line_body_offset_x = zero_line + A_offset
+        L1_start_x = zero_line + B_offset
+        L1_end_x = L1hgt
         body_color = (138, 43, 226)
         L1_mm = L1hgt * coef_calibration
         
@@ -354,8 +353,8 @@ def updateImage():
         print('L2 is: ' + str(L2))
 
         cv2.line(im, (zero_line - L2, zoi_y1), (zero_line - L2, zoi_y2), (255,0,0), 1)
-        cv2.arrowedLine(im, (zero_line + A_offset, zoi_y2), (zero_line - L2, zoi_y2), (0,0,255), 2, 1, 0, 0.04)
-        cv2.arrowedLine(im, (zero_line - L2, zoi_y2), (zero_line + A_offset, zoi_y2), (0,0,255), 2, 1, 0, 0.04)
+        cv2.arrowedLine(im, (zero_line + B_offset, zoi_y2), (zero_line - L2, zoi_y2), (0,0,255), 2, 1, 0, 0.04)
+        cv2.arrowedLine(im, (zero_line - L2, zoi_y2), (zero_line + B_offset, zoi_y2), (0,0,255), 2, 1, 0, 0.04)
         cv2.putText(im, "L2 : " + str(abs(round(L2*coef_calibration,1))) + " mm", (L2+zero_line+20, zoi_y2+40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
 
         last_frame = im
