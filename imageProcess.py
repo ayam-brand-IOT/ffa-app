@@ -304,7 +304,6 @@ def updateImage():
         
         # Display Line L1
         cv2.line(im, (L1_end_x, zoi_y1), (L1_end_x, zoi_y2), (255,0,0), 1) # Blue Line to show the end of the fish
-        cv2.line(im, (line_body_offset_x, zoi_y1), (line_body_offset_x, zoi_y2), (255,0,0), 1) # Body offset Line
         cv2.arrowedLine(im, (L1_start_x, zoi_y1+20), (L1_end_x, zoi_y1+20), (0,0,255), 2, 1, 0, 0.03)
         cv2.arrowedLine(im, (L1_end_x, zoi_y1+20), (L1_start_x, zoi_y1+20), (0,0,255), 2, 1, 0, 0.03)
         cv2.putText(im, "L1 : " + str(round(L1_mm,1)) + " mm", (L1hgt+zero_line+20, zoi_y1+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)

@@ -201,8 +201,8 @@ def video_stream():
         if frame is None:
             time.sleep(0.1)
             continue
-        cv2.line(frame, (200, 0), (200, 1000), (255, 0, 0), 1)
-        cv2.line(frame, (0, 330), (1000, 330), (255, 0, 0), 1)
+        cv2.line(frame, (200, 0), (200, 1000), (0, 0, 255), 1) # blue vertical line
+        cv2.line(frame, (0, 330), (1000, 330), (0, 0, 255), 1) # blue horizontal line
         ret, buffer = cv2.imencode('.jpeg', frame)
         if not ret:
             time.sleep(0.1)
