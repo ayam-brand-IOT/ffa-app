@@ -277,8 +277,8 @@ def updateImage():
         print(f"ROIBW shape: {ROIBW.shape}")
         
         
-        cv2.line(frame, (zero_line, 0), (zero_line, 1000), (0, 0, 255), 1) # red vertical line of the laser
-        cv2.line(frame, (0, 330), (1000, 330), (0, 0, 255), 1) # red horizontal line of the laser
+        cv2.line(im, (zero_line, 0), (zero_line, 1000), (0, 0, 255), 1) # red vertical line of the laser
+        cv2.line(im, (0, 330), (1000, 330), (0, 0, 255), 1) # red horizontal line of the laser
 
         cv2.rectangle(im, (zoi_x1, zoi_y1), (zoi_x2, zoi_y2), (0, 255, 0), 1)
         cv2.putText(im, "Zone Of Interest", (zoi_x2-150, zoi_y2+30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,150,0), 1)
