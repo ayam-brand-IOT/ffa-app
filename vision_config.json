@@ -34,7 +34,7 @@
           "parameters": {
             "A": null,
             "B": null,
-            "C": 30
+            "C": null
           }
         }
       ]
@@ -63,12 +63,12 @@
           "parameters": {
             "A": null,
             "B": null,
-            "C": 20
+            "C": null
           }
         }
       ]
     }
   ],
   "ppmm": 0.23,
-  "tailTrigger": 60
+  "tailTrigger": 50
 }
