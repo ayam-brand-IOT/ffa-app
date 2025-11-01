@@ -263,11 +263,11 @@ def updateImage():
         # Clipping de índices para estar dentro de los límites de la imagen
         zoi_y1_clipped = max(0, min(zoi_y1, height))
         zoi_y2_clipped = max(0, min(zoi_y2, height))
-        zero_line_clipped = max(0, min(zero_line, width))
+        zero_line_clipped = max(0, min(zero_line+A_offset, width))
         zoi_x2_clipped = max(0, min(zoi_x2, width))
 
         # Definir la Zona de Interés (ZOI)
-        ROIBW = BW[zoi_y1_clipped:zoi_y2_clipped, zero_line_clipped + A_offset:zoi_x2_clipped]
+        ROIBW = BW[zoi_y1_clipped:zoi_y2_clipped, zero_line_clipped:zoi_x2_clipped]
 
         # Verificar si ROIBW tiene dimensiones válidas
         if ROIBW.size == 0 or ROIBW.shape[1] == 0:
@@ -281,10 +281,11 @@ def updateImage():
         cv2.line(im, (0, 330), (1000, 330), (0, 0, 255), 1) # red horizontal line of the laser
 
         cv2.rectangle(im, (zoi_x1, zoi_y1), (zoi_x2, zoi_y2), (0, 255, 0), 1)
+        cv2.rectangle(im, (zero_line_clipped, zoi_y1_clipped), (zoi_x2_clipped, zoi_y2_clipped), (0, 255, 222), 1)
         cv2.putText(im, "Zone Of Interest", (zoi_x2-150, zoi_y2+30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,150,0), 1)
         # cv2.line(im, (zero_line, zoi_y1), (zero_line, zoi_y2), (0,0,255), 1) # red vertical line >> line of the zero
-        cv2.line(im, (zero_line + B_offset, zoi_y1), (zero_line + B_offset, zoi_y2), (0,165,255), 1) # orange vertical >> head cut line
-        cv2.line(im, (zero_line + A_offset + B_offset, zoi_y1), (zero_line + A_offset + B_offset, zoi_y2), (200,200,200), 1) # grey vertical line >> of the body offset
+        # cv2.line(im, (zero_line + B_offset, zoi_y1), (zero_line + B_offset, zoi_y2), (0,165,255), 1) # orange vertical >> head cut line
+        # cv2.line(im, (zero_line + A_offset + B_offset, zoi_y1), (zero_line + A_offset + B_offset, zoi_y2), (200,200,200), 1) # grey vertical line >> of the body offset
 
         # Size of the fish from zero line to tail
         diameter = []
