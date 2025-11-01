@@ -267,7 +267,7 @@ def updateImage():
         zoi_x2_clipped = max(0, min(zoi_x2, width))
 
         # Definir la Zona de Interés (ZOI)
-        ROIBW = BW[zoi_y1_clipped:zoi_y2_clipped, zero_line_clipped:zoi_x2_clipped]
+        ROIBW = BW[zoi_y1_clipped:zoi_y2_clipped, zero_line_clipped + A_offset:zoi_x2_clipped]
 
         # Verificar si ROIBW tiene dimensiones válidas
         if ROIBW.size == 0 or ROIBW.shape[1] == 0:
@@ -299,7 +299,7 @@ def updateImage():
             print("La lista 'diameter' está vacía, no se puede calcular el máximo. Verifique los valores de ROIBW.")
             return
 
-        L1hgt = j
+        L1hgt = j + A_offset
         
         L1_start_x = zero_line + B_offset
         L1_end_x = L1hgt
