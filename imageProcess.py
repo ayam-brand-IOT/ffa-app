@@ -302,7 +302,7 @@ def updateImage():
         L1hgt = j + A_offset
         
         L1_start_x = zero_line + B_offset
-        L1_end_x = L1hgt
+        L1_end_x = L1hgt + A_offset + B_offset #
         body_color = (138, 43, 226)
         L1_mm = L1hgt * coef_calibration
         
@@ -328,7 +328,7 @@ def updateImage():
 
         for i in range(len(c)):
             if c[i] == 1:
-                cv2.circle(im, (zero_line + D1index, i+zoi_y1), 1, (200, 0, 255), 1)
+                cv2.circle(im, (zero_line + D1index + B_offset + A_offset, i+zoi_y1), 1, (200, 0, 255), 1)
 
         print('D1 is: ' + str(D1))
 
