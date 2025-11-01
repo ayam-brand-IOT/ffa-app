@@ -284,8 +284,8 @@ def updateImage():
         cv2.rectangle(im, (zero_line_clipped, zoi_y1_clipped), (zoi_x2_clipped, zoi_y2_clipped), (0, 0, 255), 1)
         cv2.putText(im, "Zone Of Interest", (zoi_x2-150, zoi_y2+30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,150,0), 1)
         # cv2.line(im, (zero_line, zoi_y1), (zero_line, zoi_y2), (0,0,255), 1) # red vertical line >> line of the zero
-        # cv2.line(im, (zero_line + B_offset, zoi_y1), (zero_line + B_offset, zoi_y2), (0,165,255), 1) # orange vertical >> head cut line
-        # cv2.line(im, (zero_line + A_offset + B_offset, zoi_y1), (zero_line + A_offset + B_offset, zoi_y2), (200,200,200), 1) # grey vertical line >> of the body offset
+        cv2.line(im, (zero_line + B_offset, zoi_y1), (zero_line + B_offset, zoi_y2), (0,165,255), 1) # orange vertical >> head cut line
+        cv2.line(im, (zero_line + A_offset + B_offset, zoi_y1), (zero_line + A_offset + B_offset, zoi_y2), (200,200,200), 1) # grey vertical line >> of the body offset
 
         # Size of the fish from zero line to tail
         diameter = []
@@ -293,6 +293,7 @@ def updateImage():
             w = np.sum(1 - ROIBW[:, j]) # sum all the '0' pixel on the Y (ROIBW[x,y])
             diameter.append(w)          # the tab diameter have all the diameter of the fish for each x0...xn
             if w <= Z1:                 # stop the loop when the size of the diameter of the tail is reached
+                print(w)
                 break
 
         # Verificar que la lista 'diameter' no esté vacía
@@ -303,7 +304,7 @@ def updateImage():
         L1hgt = j + A_offset
         
         L1_start_x = zero_line + B_offset
-        L1_end_x = L1hgt + A_offset + B_offset #
+        L1_end_x = zero_line + L1hgt + B_offset
         body_color = (138, 43, 226)
         L1_mm = L1hgt * coef_calibration
         
