@@ -1,12 +1,12 @@
 {
   "zoi": [
     {
-      "x": 124.0078125,
-      "y": 182.7265625
+      "x": 51,
+      "y": 92
     },
     {
-      "x": 480.3359375,
-      "y": 360.7265625
+      "x": 940,
+      "y": 530
     }
   ],
   "species_params": [
@@ -34,7 +34,7 @@
           "parameters": {
             "A": null,
             "B": null,
-            "C": 30
+            "C": null
           }
         }
       ]
@@ -63,12 +63,12 @@
           "parameters": {
             "A": null,
             "B": null,
-            "C": 20
+            "C": null
           }
         }
       ]
     }
   ],
   "ppmm": 0.23,
-  "tailTrigger": 40
+  "tailTrigger": 50
 }

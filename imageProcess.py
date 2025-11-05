@@ -83,24 +83,31 @@ zoi_x1 = 40
 zoi_y1 = 100
 zoi_x2 = 500
 zoi_y2 = 500
-Z1 = 40  # Size of the tail we want
+tailTriggerDiameter : 40 # previously >> Z1 = 40  # Size of the tail we want
+
+
+captured = False
+# pause_image = False
+lytho = 1.2  # user threshold 1.2
+img_counter = 0
+zero_line = 200
 
 # Parámetros de pescado (estos se actualizarán según la selección)
 fish_parameters = {
-    "A": None,
-    "B": None,
-    "C": None
+    "A": None, # A : Body Offset : to avoid false measurement of width when ther is a block for HG/T 
+    "B": None, # B:  Head Cut Offset : the offset between the Laser and the real head cut
+    "C": None  # C : Tail Trigger Diameter : the minimum diameter of the fish that determine the tail cut >> when we reach this diameter we stop measuring pixels
 }
 
 def loadConfig():
     try:
         with open(__CONFIG_PATH__, 'r') as archivo:
             config = json.load(archivo)
-        global zoi_x1, zoi_y1, zoi_x2, zoi_y2, coef_calibration, Z1
+        global zoi_x1, zoi_y1, zoi_x2, zoi_y2, coef_calibration, tailTriggerDiameter
         zoi_x1, zoi_y1 = math.floor(config['zoi'][0]['x']), math.floor(config['zoi'][0]['y'])
         zoi_x2, zoi_y2 = math.floor(config['zoi'][1]['x']), math.floor(config['zoi'][1]['y'])
         coef_calibration = config['ppmm']
-        Z1 = math.floor(config['tailTrigger'])
+        # tailTriggerDiameter = math.floor(config['tailTrigger'])
     except Exception as e:
         print(f"Error al cargar la configuración: {e}")
     
@@ -133,14 +140,13 @@ def update_fish_parameters(params):
     except Exception as e:
         print("Error al escribir los fish parameters en vision_config.json:", e)
 
-captured = False
-# pause_image = False
-ZOI_start = [zoi_x1, zoi_y1]
-ZOI_end = [zoi_x2, zoi_y2]
-lytho = 1.2  # user threshold 1.2
-img_counter = 0
-zero_line = 200
-offset = 10
+# captured = False
+# # pause_image = False
+# ZOI_start = [zoi_x1, zoi_y1]
+# ZOI_end = [zoi_x2, zoi_y2]
+# lytho = 1.2  # user threshold 1.2
+# img_counter = 0
+# zero_line = 200
 
 def write_px_mm_ratio(ratio):
     global coef_calibration
@@ -189,140 +195,6 @@ def handle_reset():
     captured_data = None
     print("reset")
 
-# def updateImage():
-#     global captured, img_counter, cap, last_frame, zoi_x1, captured_data, frameReadyCallback
-#     if captured:
-#         # ios.flash(True)
-#         # ios.laser(False)
-#         # time.sleep(10.5)
-#         print("Capturing image")
-
-#         ret, frame = cap.read()
-#         frame = cv2.resize(frame, (1000, 650))
-
-#         img_name = __MAIN_PATH__+"{}.png".format(img_counter)
-#         cv2.imwrite(img_name, frame)
-#         print("{} written!".format(img_name))
-#         # im = cv2.imread( __MAIN_PATH__+ str(img_counter) + ".png")
-#         im = frame
-#         img_counter += 1
-
-#         img = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-#         blur = cv2.GaussianBlur(img, (13, 13), 0)
-#         ret3, th3 = cv2.threshold(blur, 0, 1, cv2.THRESH_OTSU)  # cv.THRESH_BINARY
-#         ret4, BW = cv2.threshold(blur, ret3 * lytho, 1, cv2.THRESH_BINARY)
-
-#         # Task 1b : Determine when to start ZOI
-#         # 1st one for fish with head
-#         diameter_full_image = []
-#         for j in range(BW.shape[1]):  # shape[0] = on the height (y-axis) and shape[1] on the width (x-axis)
-#             d = np.sum(1 - BW[:, j])  # sum all the '0' pixel on the Y (ROIBW[x,y])
-#             diameter_full_image.append(d) # the tab diameter have all the diameter of the fish for each x0...xn
-#         Df = np.max(diameter_full_image) # search what is the max on the tab diameter
-
-#             # 2nd one for fish without head with a block
-#         Dfindex = diameter_full_image.index(Df)
-#         for j in range(Dfindex,len(diameter_full_image)-Dfindex): # We start from the biggest black line until the end of thet tab
-#             if diameter_full_image[j] < Df: # Once we have something less than the biggest one it means that it's finished
-#                 break
-#         zoi = j
-
-#         ### Task 2 : Zone Of Interest (ZOI) a.k.a Zone of Measurement
-#         ROIBW = BW[zoi_y1:zoi_y2, zero_line:zoi_x2]  # source_image[ start_row : end_row, start_col : end_col] row = y, column = x
-#         cv2.rectangle(im, (zoi_x1, zoi_y1), (zoi_x2, zoi_y2), (0, 255, 0), 1)
-#         cv2.putText(im,"Zone Of Interest",(zoi_x2-150, zoi_y2+30),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,150,0),1)
-#         cv2.line(im,(zero_line, zoi_y1),(zero_line, zoi_y2),(0,0,255),1)
-        
-#         # Print zero line
-#         cv2.line(im,(zero_line + offset, zoi_y1),(zero_line + offset, zoi_y2),(0,255,0),1)
-
-#         ###Task 2 : Region of Interest (ROI)
-#         # y1 = 60
-#         # x2 = 950
-#         # x1 = 215
-#         # # if zoi > x2:
-#         # #     x1 = 50
-#         # # else:
-#         # #     x1 = zoi+4
-#         # y2 = 600
-#         # ROIBW = BW[y1:y2, x1:x2]  # source_image[ start_row : end_row, start_col : end_col] row = y, column = x
-#         # cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 0), 1)
-#         # cv2.putText(im,"Zone Of Interest",(x2-150, y2+30),cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,200,0),1)
-
-#         ###Task 3 : Size of the fish from zero line to tail
-#         diameter = []
-#         for j in range(ROIBW.shape[1]):  # shape[0] = on the height (y-axis) and shape[1] on the width (x-axis)
-#             w = np.sum(1 - ROIBW[:, j])  # sum all the '0' pixel on the Y (ROIBW[x,y])
-#             diameter.append(w) # the tab diameter have all the diameter of the fish for each x0...xn
-
-#             if w <= Z1: # stop the loop when the size of the diameter of the tail is reached
-#                 break
-#         L1 = j - offset
-#         L1hgt = j
-#         print('L1 is: ' + str(L1))
-
-#         cv2.line(im,(L1hgt + zero_line, zoi_y1),(L1hgt + zero_line, zoi_y2),(255,0,0),1)
-#         cv2.arrowedLine(im,(zero_line + offset, zoi_y1+20),(L1hgt+zero_line, zoi_y1+20),(0,0,255),2,1,0,0.03) 
-#         cv2.arrowedLine(im,(L1hgt+zero_line, zoi_y1+20),(zero_line+offset, zoi_y1+20),(0,0,255),2,1,0,0.03)
-#         cv2.putText(im,"L1 : " +str(round(L1*coef_calibration,1))+str(" mm"),(L1+zero_line+20, zoi_y1+30),cv2.FONT_HERSHEY_SIMPLEX,1,(0,0,255),3)
-#         # cv2.putText(im,"L1hgt : " +str(round(L1hgt*coef_calibration,1))+str(" mm"),(L1hgt+zero_line+20, zoi_y1+60),cv2.FONT_HERSHEY_SIMPLEX,1,(0,0,255),3)
-        
-#         ####Task 4 : Surface of the fish
-#         S1 = np.sum(np.sum(1 - ROIBW[:, 1:L1]))
-#         print('Black area is: ' + str(S1))
-
-#         ###Task 5 : Biggest diameter of the fish
-#         D1 = np.max(diameter) # search what is the max on the tab diameter
-#         D1index = diameter.index(D1)
-#         c = (1 - ROIBW[:, D1index])  # c is all the points on y-axis at the D1index point on the x-axis
-
-#         for i in range(len(c)):
-#             if c[i] == 1:
-#                 cv2.circle(im, (zero_line + D1index, i+zoi_y1), 1, (200, 0, 255), 1) # we add circle each time there is a 1 so we can display the diameter
-
-#         print('D1 is: ' + str(D1))
-
-#         cv2.putText(im,"D1 : " +str(round(D1*coef_calibration,1))+str(" mm"),(D1index+zero_line+20, zoi_y1+250),cv2.FONT_HERSHEY_SIMPLEX,1,(200,0,255),3)
-
-#         ###Task 6 : Size of the head
-#         ROIBW_HEAD = BW[zoi_y1:zoi_y2, zoi_x1:zoi_x2]  # source_image[ start_row : end_row, start_col : end_col] row = y, column = x
-#         for j in range(ROIBW_HEAD.shape[1]):
-#             w2 = np.sum(1 - ROIBW_HEAD[:, j])
-#             if w2 > 2:
-#                 break
-#         L2 = zero_line - j - zoi_x1
-#         print('L2 is: ' + str(L2))
-
-#         cv2.line(im,(zero_line - L2, zoi_y1),(zero_line - L2, zoi_y2),(255,0,0),1)
-#         cv2.arrowedLine(im,(zero_line + offset, zoi_y2),(zero_line - L2, zoi_y2),(0,0,255),2,1,0,0.04) 
-#         cv2.arrowedLine(im,(zero_line -L2, zoi_y2),(zero_line + offset, zoi_y2),(0,0,255),2,1,0,0.04)
-#         cv2.putText(im,"L2 : " +str(abs(round(L2*coef_calibration,1)))+str(" mm"),(L2+zero_line+20, zoi_y2+40),cv2.FONT_HERSHEY_SIMPLEX,1,(0,0,255),3)
-#         # self.updateImage(im)
-#         last_frame = im
-#         if captured_data == None:
-#             captured_data = '{ "length": '+str(round(L1*coef_calibration,1))+', "height": '+str(round(D1*coef_calibration,1))+', "head": '+str(abs(round(L2*coef_calibration,1)))+', "tail_trigger": '+str(round(Z1*coef_calibration,1))+' }'
-        
-#         captured = False
-#         frameReadyCallback()
-#         # return im 
-#         return frame
-        
-
-#     elif not captured:
-
-#         ret, frame = cap.read()
-#         frame = cv2.resize(frame, (1000, 650))
-#     #  cap.release()
-#     # if captured and not pause_image:
-        
-#         # self.updateImage(frame)
-#         return frame
-    
-#     # else:
-#     #     # self.updateImage(last_frame)
-#     #     return last_frame
-
-
 def updateImage():
     global captured, img_counter, last_frame, zoi_x1, captured_data, frameReadyCallback, zero_line
     frame = get_stream_frame()
@@ -337,6 +209,33 @@ def updateImage():
 
         im = frame.copy()
         img_counter += 1
+        
+        A_value = 0.0
+        B_value = 0.0
+        C_value = 0.0
+        if fish_parameters:
+            
+            raw_A = fish_parameters.get("A")
+            if raw_A is not None:
+                try:
+                    A_value = float(raw_A)
+                except (TypeError, ValueError):
+                    A_value = 0.0
+                    
+            raw_B = fish_parameters.get("B")
+            if raw_B is not None:
+                try:
+                    B_value = float(raw_B)
+                except (TypeError, ValueError):
+                    B_value = 0.0
+                    
+            raw_C = fish_parameters.get("C")
+            if raw_C is not None:
+                try:
+                    C_value = float(raw_C)
+                except (TypeError, ValueError):
+                    C_value = 0.0
+            
 
         img = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
         blur = cv2.GaussianBlur(img, (13, 13), 0)
@@ -347,6 +246,22 @@ def updateImage():
         height, width = BW.shape
         print(f"Dimensiones de BW: {BW.shape}")
 
+        # Convert the user-provided A, B, and C lengths (mm) into pixel offsets.
+        if coef_calibration > 0:
+            Body_Offset = int(round(A_value / coef_calibration))
+            Head_Cut_Offset = int(round(B_value / coef_calibration))
+            Tail_Trigger_Diameter = int(round(C_value / coef_calibration))
+        else:
+            Body_Offset = int(round(A_value))
+            Head_Cut_Offset = int(round(B_value))
+            Tail_Trigger_Diameter = int(round(C_value))
+
+        max_offset = max(0, width - zero_line)
+        Body_Offset = max(0, min(Body_Offset, max_offset))
+        Head_Cut_Offset = max(0, min(Head_Cut_Offset, max_offset))
+        Tail_Trigger_Diameter = max(0, min(Tail_Trigger_Diameter, max_offset))
+        print(f"Offsets (px) -> A: {Body_Offset}, B: {Head_Cut_Offset}, C: {Tail_Trigger_Diameter}")
+
         # Asegurarse de que zero_line < zoi_x2
         if zero_line >= zoi_x2:
             print(f"Ajustando zero_line de {zero_line} a {zoi_x1}")
@@ -355,7 +270,7 @@ def updateImage():
         # Clipping de índices para estar dentro de los límites de la imagen
         zoi_y1_clipped = max(0, min(zoi_y1, height))
         zoi_y2_clipped = max(0, min(zoi_y2, height))
-        zero_line_clipped = max(0, min(zero_line, width))
+        zero_line_clipped = max(0, min(zero_line+Body_Offset + Head_Cut_Offset, width))
         zoi_x2_clipped = max(0, min(zoi_x2, width))
 
         # Definir la Zona de Interés (ZOI)
@@ -367,18 +282,25 @@ def updateImage():
             return
 
         print(f"ROIBW shape: {ROIBW.shape}")
+        
+        
+        cv2.line(im, (zero_line, 0), (zero_line, 1000), (0, 0, 255), 1) # red vertical line of the laser
+        cv2.line(im, (0, 330), (1000, 330), (0, 0, 255), 1) # red horizontal line of the laser
 
         cv2.rectangle(im, (zoi_x1, zoi_y1), (zoi_x2, zoi_y2), (0, 255, 0), 1)
+        cv2.rectangle(im, (zero_line_clipped, zoi_y1_clipped), (zoi_x2_clipped, zoi_y2_clipped), (0, 0, 255), 1)
         cv2.putText(im, "Zone Of Interest", (zoi_x2-150, zoi_y2+30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,150,0), 1)
-        cv2.line(im, (zero_line, zoi_y1), (zero_line, zoi_y2), (0,0,255), 1)
-        cv2.line(im, (zero_line + offset, zoi_y1), (zero_line + offset, zoi_y2), (0,255,0), 1)
+        # cv2.line(im, (zero_line, zoi_y1), (zero_line, zoi_y2), (0,0,255), 1) # red vertical line >> line of the zero
+        cv2.line(im, (zero_line + Head_Cut_Offset, zoi_y1), (zero_line + Head_Cut_Offset, zoi_y2), (0,165,255), 1) # orange vertical >> head cut line
+        cv2.line(im, (zero_line + Body_Offset + Head_Cut_Offset, zoi_y1), (zero_line + Body_Offset + Head_Cut_Offset, zoi_y2), (200,200,200), 1) # grey vertical line >> of the body offset
 
-        # Calcular el diámetro
+        # Size of the fish from zero line to tail
         diameter = []
-        for j in range(ROIBW.shape[1]):
-            w = np.sum(1 - ROIBW[:, j])
-            diameter.append(w)
-            if w <= Z1:
+        for j in range(ROIBW.shape[1]): # shape[0] = on the height (y-axis) and shape[1] on the width (x-axis)
+            w = np.sum(1 - ROIBW[:, j]) # sum all the '0' pixel on the Y (ROIBW[x,y])
+            diameter.append(w)          # the tab diameter have all the diameter of the fish for each x0...xn
+            if w <= Tail_Trigger_Diameter:                 # stop the loop when the size of the diameter of the tail is reached
+                print(w)
                 break
 
         # Verificar que la lista 'diameter' no esté vacía
@@ -386,72 +308,40 @@ def updateImage():
             print("La lista 'diameter' está vacía, no se puede calcular el máximo. Verifique los valores de ROIBW.")
             return
 
-        L1_pixels = j - offset
-        L1hgt = j
-        print('L1 (px) is: ' + str(L1_pixels))
-
-        B_value = 0.0
-        A_value = 0.0
-        if fish_parameters:
-            raw_B = fish_parameters.get("B")
-            if raw_B is not None:
-                try:
-                    B_value = float(raw_B)
-                except (TypeError, ValueError):
-                    B_value = 0.0
-            raw_A = fish_parameters.get("A")
-            if raw_A is not None:
-                try:
-                    A_value = float(raw_A)
-                except (TypeError, ValueError):
-                    A_value = 0.0
-
-        L1_mm = L1_pixels * coef_calibration
-        L1_adjusted_mm = L1_mm - B_value
-        L1_body_mm = L1_adjusted_mm - A_value
-        L1_body_mm = max(L1_body_mm, 0.0)
-        print('L1 adjusted (mm) is: ' + str(L1_adjusted_mm))
-        print('L1 body (mm) is: ' + str(L1_body_mm))
-
-        L1_end_x = L1hgt + zero_line
-        body_start_x = zero_line + offset
+        bodyLength = j + Body_Offset
+        
+        bodyLength_start_x = zero_line + Head_Cut_Offset
+        bodyLength_end_x = zero_line + bodyLength + Head_Cut_Offset
         body_color = (138, 43, 226)
-        L1_body_pixels = 0.0
-        if coef_calibration > 0:
-            L1_body_pixels = L1_body_mm / coef_calibration
-            body_start_x = int(round(L1_end_x - L1_body_pixels))
-        body_start_x = int(max(zero_line, min(body_start_x, L1_end_x)))
+        bodyLength_mm = bodyLength * coef_calibration
+        
+        # Display Line bodyLength
+        cv2.line(im, (bodyLength_end_x, zoi_y1), (bodyLength_end_x, zoi_y2), (255,0,0), 1) # Blue Line to show the end of the fish
+        cv2.arrowedLine(im, (bodyLength_start_x, zoi_y1+20), (bodyLength_end_x, zoi_y1+20), (0,0,255), 2, 1, 0, 0.03)
+        cv2.arrowedLine(im, (bodyLength_end_x, zoi_y1+20), (bodyLength_start_x, zoi_y1+20), (0,0,255), 2, 1, 0, 0.03)
+        cv2.putText(im, "bodyLength : " + str(round(bodyLength_mm,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
 
-        cv2.line(im, (L1hgt + zero_line, zoi_y1), (L1hgt + zero_line, zoi_y2), (255,0,0), 1)
-        cv2.arrowedLine(im, (zero_line + offset, zoi_y1+20), (L1hgt+zero_line, zoi_y1+20), (0,0,255), 2, 1, 0, 0.03)
-        cv2.arrowedLine(im, (L1hgt+zero_line, zoi_y1+20), (zero_line+offset, zoi_y1+20), (0,0,255), 2, 1, 0, 0.03)
-        cv2.putText(im, "L1 : " + str(round(L1_adjusted_mm,1)) + " mm", (L1_pixels+zero_line+20, zoi_y1+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
 
-        if L1_body_mm > 0 and body_start_x < L1_end_x:
-            cv2.line(im, (body_start_x, zoi_y1), (body_start_x, zoi_y2), body_color, 1)
-            cv2.arrowedLine(im, (body_start_x, zoi_y1+60), (L1_end_x, zoi_y1+60), body_color, 2, 1, 0, 0.03)
-            cv2.arrowedLine(im, (L1_end_x, zoi_y1+60), (body_start_x, zoi_y1+60), body_color, 2, 1, 0, 0.03)
-
-        cv2.putText(im, "B : " + str(round(B_value,1)) + " mm", (L1_pixels+zero_line+20, zoi_y1+90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,165,0), 2)
-        cv2.putText(im, "A : " + str(round(A_value,1)) + " mm", (L1_pixels+zero_line+20, zoi_y1+130), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
-        cv2.putText(im, "L1_body : " + str(round(L1_body_mm,1)) + " mm", (L1_pixels+zero_line+20, zoi_y1+170), cv2.FONT_HERSHEY_SIMPLEX, 0.8, body_color, 2)
+        cv2.putText(im, "Head Cut offset : " + str(round(B_value,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,165,0), 2)
+        cv2.putText(im, "Body offset : " + str(round(A_value,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+130), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+        cv2.putText(im, "bodyLength_body : " + str(round(bodyLength_mm,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+170), cv2.FONT_HERSHEY_SIMPLEX, 0.8, body_color, 2)
 
         # Calcular el área negra
-        S1 = np.sum(np.sum(1 - ROIBW[:, 1:L1_pixels]))
-        print('Black area is: ' + str(S1))
+        bodySurface = np.sum(np.sum(1 - ROIBW[:, 1:bodyLength]))
+        print('Black area is: ' + str(bodySurface))
 
         # Calcular el diámetro máximo
-        D1 = np.max(diameter)
-        D1index = diameter.index(D1)
-        c = (1 - ROIBW[:, D1index])
+        bodyDiameter = np.max(diameter)
+        bodyDiameterindex = diameter.index(bodyDiameter)
+        c = (1 - ROIBW[:, bodyDiameterindex])
 
         for i in range(len(c)):
             if c[i] == 1:
-                cv2.circle(im, (zero_line + D1index, i+zoi_y1), 1, (200, 0, 255), 1)
+                cv2.circle(im, (zero_line + bodyDiameterindex + Head_Cut_Offset + Body_Offset, i+zoi_y1), 1, (200, 0, 255), 1)
 
-        print('D1 is: ' + str(D1))
+        print('bodyDiameter is: ' + str(bodyDiameter))
 
-        cv2.putText(im, "D1 : " + str(round(D1*coef_calibration,1)) + " mm", (D1index+zero_line+20, zoi_y1+250), cv2.FONT_HERSHEY_SIMPLEX, 1, (200,0,255), 3)
+        cv2.putText(im, "bodyDiameter : " + str(round(bodyDiameter*coef_calibration,1)) + " mm", (bodyDiameterindex+zero_line+20, zoi_y1+250), cv2.FONT_HERSHEY_SIMPLEX, 1, (200,0,255), 3)
 
         # Ajuste de índices para la cabeza
         zoi_x1_clipped = max(0, min(zoi_x1, width))
@@ -468,17 +358,17 @@ def updateImage():
             w2 = np.sum(1 - ROIBW_HEAD[:, j])
             if w2 > 2:
                 break
-        L2 = zero_line - j - zoi_x1
-        print('L2 is: ' + str(L2))
+        headLength = zero_line - j - zoi_x1
+        print('headLength is: ' + str(headLength))
 
-        cv2.line(im, (zero_line - L2, zoi_y1), (zero_line - L2, zoi_y2), (255,0,0), 1)
-        cv2.arrowedLine(im, (zero_line + offset, zoi_y2), (zero_line - L2, zoi_y2), (0,0,255), 2, 1, 0, 0.04)
-        cv2.arrowedLine(im, (zero_line - L2, zoi_y2), (zero_line + offset, zoi_y2), (0,0,255), 2, 1, 0, 0.04)
-        cv2.putText(im, "L2 : " + str(abs(round(L2*coef_calibration,1))) + " mm", (L2+zero_line+20, zoi_y2+40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
+        cv2.line(im, (zero_line - headLength, zoi_y1), (zero_line - headLength, zoi_y2), (255,0,0), 1)
+        cv2.arrowedLine(im, (zero_line + Head_Cut_Offset, zoi_y2), (zero_line - headLength, zoi_y2), (0,0,255), 2, 1, 0, 0.04)
+        cv2.arrowedLine(im, (zero_line - headLength, zoi_y2), (zero_line + Head_Cut_Offset, zoi_y2), (0,0,255), 2, 1, 0, 0.04)
+        cv2.putText(im, "headLength : " + str(abs(round(headLength*coef_calibration,1))) + " mm", (headLength+zero_line+20, zoi_y2+40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
 
         last_frame = im
         
-        captured_data = '{ "length": '+str(round(L1_adjusted_mm,1))+', "height": '+str(round(D1*coef_calibration,1))+', "head": '+str(abs(round(L2*coef_calibration,1)))+', "tail_trigger": '+str(round(Z1*coef_calibration,1))+' }'
+        captured_data = '{ "length": '+str(round(bodyLength_mm,1))+', "height": '+str(round(bodyDiameter*coef_calibration,1))+', "head": '+str(abs(round(headLength*coef_calibration,1)))+', "tail_trigger": '+str(round(Tail_Trigger_Diameter*coef_calibration,1))+' }'
 
         captured = False
         frameReadyCallback()
