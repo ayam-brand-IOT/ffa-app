@@ -16,25 +16,25 @@
         {
           "typeName": "WR",
           "parameters": {
-            "A": 10,
-            "B": 15,
-            "C": 20
+            "BODY_OFFSET": 10,
+            "HEAD_CUT_OFFSET": 15,
+            "TAIL_TRIGGER_DIAMETER": 20
           }
         },
         {
           "typeName": "HG",
           "parameters": {
-            "A": 12,
-            "B": null,
-            "C": 24
+            "BODY_OFFSET": 12,
+            "HEAD_CUT_OFFSET": null,
+            "TAIL_TRIGGER_DIAMETER": 24
           }
         },
         {
           "typeName": "HGT",
           "parameters": {
-            "A": null,
-            "B": null,
-            "C": null
+            "BODY_OFFSET": null,
+            "HEAD_CUT_OFFSET": null,
+            "TAIL_TRIGGER_DIAMETER": null
           }
         }
       ]
@@ -45,25 +45,25 @@
         {
           "typeName": "WR",
           "parameters": {
-            "A": 5,
-            "B": 10,
-            "C": 15
+            "BODY_OFFSET": 5,
+            "HEAD_CUT_OFFSET": 10,
+            "TAIL_TRIGGER_DIAMETER": 15
           }
         },
         {
           "typeName": "HG",
           "parameters": {
-            "A": 6,
-            "B": null,
-            "C": 18
+            "BODY_OFFSET": 6,
+            "HEAD_CUT_OFFSET": null,
+            "TAIL_TRIGGER_DIAMETER": 18
           }
         },
         {
           "typeName": "HGT",
           "parameters": {
-            "A": null,
-            "B": null,
-            "C": null
+            "BODY_OFFSET": null,
+            "HEAD_CUT_OFFSET": null,
+            "TAIL_TRIGGER_DIAMETER": null
           }
         }
       ]

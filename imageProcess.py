@@ -94,9 +94,9 @@ zero_line = 200
 
 # Parámetros de pescado (estos se actualizarán según la selección)
 fish_parameters = {
-    "A": None, # A : Body Offset : to avoid false measurement of width when ther is a block for HG/T 
-    "B": None, # B:  Head Cut Offset : the offset between the Laser and the real head cut
-    "C": None  # C : Tail Trigger Diameter : the minimum diameter of the fish that determine the tail cut >> when we reach this diameter we stop measuring pixels
+    "BODY_OFFSET":              None, # A : Body Offset : to avoid false measurement of width when ther is a block for HG/T 
+    "HEAD_CUT_OFFSET":          None, # B:  Head Cut Offset : the offset between the Laser and the real head cut
+    "TAIL_TRIGGER_DIAMETER":    None  # C : Tail Trigger Diameter : the minimum diameter of the fish that determine the tail cut >> when we reach this diameter we stop measuring pixels
 }
 
 def loadConfig():
@@ -210,31 +210,31 @@ def updateImage():
         im = frame.copy()
         img_counter += 1
         
-        A_value = 0.0
-        B_value = 0.0
-        C_value = 0.0
+        body_offset_value = 0.0
+        head_cut_offset_value = 0.0
+        tail_trigger_diameter_value = 0.0
         if fish_parameters:
-            
-            raw_A = fish_parameters.get("A")
-            if raw_A is not None:
+
+            raw_BO = fish_parameters.get("BODY_OFFSET")
+            if raw_BO is not None:
                 try:
-                    A_value = float(raw_A)
+                    body_offset_value = float(raw_BO)
                 except (TypeError, ValueError):
-                    A_value = 0.0
-                    
-            raw_B = fish_parameters.get("B")
-            if raw_B is not None:
+                    body_offset_value = 0.0
+
+            raw_HC = fish_parameters.get("HEAD_CUT_OFFSET")
+            if raw_HC is not None:
                 try:
-                    B_value = float(raw_B)
+                    head_cut_offset_value = float(raw_HC)
                 except (TypeError, ValueError):
-                    B_value = 0.0
-                    
-            raw_C = fish_parameters.get("C")
-            if raw_C is not None:
+                    head_cut_offset_value = 0.0
+
+            raw_TD = fish_parameters.get("TAIL_TRIGGER_DIAMETER")
+            if raw_TD is not None:
                 try:
-                    C_value = float(raw_C)
+                    tail_trigger_diameter_value = float(raw_TD)
                 except (TypeError, ValueError):
-                    C_value = 0.0
+                    tail_trigger_diameter_value = 0.0
             
 
         img = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
@@ -248,13 +248,13 @@ def updateImage():
 
         # Convert the user-provided A, B, and C lengths (mm) into pixel offsets.
         if coef_calibration > 0:
-            Body_Offset = int(round(A_value / coef_calibration))
-            Head_Cut_Offset = int(round(B_value / coef_calibration))
-            Tail_Trigger_Diameter = int(round(C_value / coef_calibration))
+            Body_Offset = int(round(body_offset_value / coef_calibration))
+            Head_Cut_Offset = int(round(head_cut_offset_value / coef_calibration))
+            Tail_Trigger_Diameter = int(round(tail_trigger_diameter_value / coef_calibration))
         else:
-            Body_Offset = int(round(A_value))
-            Head_Cut_Offset = int(round(B_value))
-            Tail_Trigger_Diameter = int(round(C_value))
+            Body_Offset = int(round(body_offset_value))
+            Head_Cut_Offset = int(round(head_cut_offset_value))
+            Tail_Trigger_Diameter = int(round(tail_trigger_diameter_value))
 
         max_offset = max(0, width - zero_line)
         Body_Offset = max(0, min(Body_Offset, max_offset))
@@ -322,8 +322,8 @@ def updateImage():
         cv2.putText(im, "bodyLength : " + str(round(bodyLength_mm,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
 
 
-        cv2.putText(im, "Head Cut offset : " + str(round(B_value,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,165,0), 2)
-        cv2.putText(im, "Body offset : " + str(round(A_value,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+130), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+        cv2.putText(im, "Head Cut offset : " + str(round(head_cut_offset_value,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,165,0), 2)
+        cv2.putText(im, "Body offset : " + str(round(body_offset_value,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+130), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
         cv2.putText(im, "bodyLength_body : " + str(round(bodyLength_mm,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+170), cv2.FONT_HERSHEY_SIMPLEX, 0.8, body_color, 2)
 
         # Calcular el área negra
