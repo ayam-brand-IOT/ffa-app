@@ -15,6 +15,7 @@ from flask_cors import CORS
 from flask_socketio import SocketIO, send, emit
 from flask import Flask, render_template, Response, request, stream_with_context
 import logging
+from logger import logEvent, get_logger
 
 async_mode = None
 
@@ -58,13 +59,39 @@ def update_net_status():
 
 @socketio.event
 def calibrate_load_cell(data):
-    with thread_lock:
-        net.isCalibrating = True
-        step = data['step']
-        args = data['args']
-        print("calibrate load cell step:", step, " args:", args)
-        net.remote_calibration(step, args)
-    emit('calibration_step_commited', "step commited")
+    try:
+        with thread_lock:
+            net.isCalibrating = True
+            step = data['step']
+            args = data['args']
+            print("calibrate load cell step:", step, " args:", args)
+            
+            net.remote_calibration(step, args)
+            
+            logEvent(
+                etapa="CALIBRATION",
+                status="SUCCESS",
+                additional_data={
+                    "calibration_type": "load_cell",
+                    "step": step,
+                    "args": args
+                }
+            )
+            
+        emit('calibration_step_commited', "step commited")
+    except Exception as e:
+        logEvent(
+            etapa="CALIBRATION",
+            status="ERROR",
+            error_code="LOAD_CELL_CALIB_ERROR",
+            error_msg=str(e),
+            additional_data={
+                "calibration_type": "load_cell",
+                "step": data.get('step'),
+                "args": data.get('args')
+            }
+        )
+        emit('calibration_error', {"error": str(e)})
 
 @socketio.event
 def resume_net_update():
@@ -111,15 +138,54 @@ def get_analysis_data(data):
 
 @socketio.event
 def capture(data):
-    ios.timered_flash()
-    time.sleep(1)
-    print("capturing")
-    imageProcess.handle_capture(frameIsReady)
+    try:
+        ios.timered_flash()
+        time.sleep(1)
+        print("capturing")
+        
+        # Log inicio de captura
+        logEvent(
+            etapa="CAPTURE",
+            status="INFO",
+            additional_data={"action": "capture_started"}
+        )
+        
+        imageProcess.handle_capture(frameIsReady)
+        
+        # Log captura exitosa
+        logEvent(
+            etapa="CAPTURE",
+            status="SUCCESS",
+            additional_data={"action": "capture_completed"}
+        )
+    except Exception as e:
+        # Log error en captura
+        logEvent(
+            etapa="CAPTURE",
+            status="ERROR",
+            error_code="CAPTURE_ERROR",
+            error_msg=str(e)
+        )
+        print(f"Error en captura: {e}")
 
 @socketio.event
 def reset(data):
-    print("reseting")
-    imageProcess.handle_reset()
+    try:
+        print("reseting")
+        imageProcess.handle_reset()
+        
+        logEvent(
+            etapa="RESET",
+            status="SUCCESS",
+            additional_data={"action": "reset_completed"}
+        )
+    except Exception as e:
+        logEvent(
+            etapa="RESET",
+            status="ERROR",
+            error_code="RESET_ERROR",
+            error_msg=str(e)
+        )
 
 @socketio.event
 def reset_defects(data):
@@ -179,6 +245,14 @@ def update_fish_params_func(data):
     except Exception as e:
         error_msg = f"Error al leer vision_config.json: {e}"
         print(error_msg)
+        
+        logEvent(
+            etapa="CONFIG_UPDATE",
+            status="ERROR",
+            error_code="CONFIG_READ_ERROR",
+            error_msg=error_msg
+        )
+        
         return {"error": error_msg}
     
     species_list = config.get("species_params", [])
@@ -190,7 +264,30 @@ def update_fish_params_func(data):
                     # Llama a la función en imageProcess para actualizar los parámetros internamente
                     imageProcess.update_fish_parameters(params)
                     print("Parámetros actualizados en imageProcess:", params)
+                    
+                    # Log actualización exitosa
+                    logEvent(
+                        etapa="CONFIG_UPDATE",
+                        status="SUCCESS",
+                        fish_params={
+                            "species": species_name,
+                            "type": type_name,
+                            "parameters": params
+                        },
+                        additional_data={"config_type": "fish_parameters"}
+                    )
+                    
                     return {"status": "ok", "parameters": params}
+    
+    # Log si no se encuentra la especie/tipo
+    logEvent(
+        etapa="CONFIG_UPDATE",
+        status="ERROR",
+        error_code="SPECIES_NOT_FOUND",
+        error_msg=f"Especie '{species_name}' o tipo '{type_name}' no encontrado",
+        fish_params={"species": species_name, "type": type_name}
+    )
+    
     return {"error": "Especie o tipo no encontrado"}
 
 ######################################## Endpoints HTTP ########################################
@@ -228,17 +325,60 @@ def index(path):
 
 @app.route('/length_calibration', methods=['POST'])
 def length_calibration():
-    data = request.get_json()
-    print("Length calibration data:", data)
-    imageProcess.write_px_mm_ratio(data['ratio'])
-    return "ok"
+    try:
+        data = request.get_json()
+        print("Length calibration data:", data)
+        
+        old_ratio = imageProcess.get_px_mm_ratio() if hasattr(imageProcess, 'get_px_mm_ratio') else None
+        
+        imageProcess.write_px_mm_ratio(data['ratio'])
+        
+        logEvent(
+            etapa="CALIBRATION",
+            status="SUCCESS",
+            vision_params={
+                "old_ratio": old_ratio,
+                "new_ratio": data['ratio']
+            },
+            additional_data={"calibration_type": "length"}
+        )
+        
+        return "ok"
+    except Exception as e:
+        logEvent(
+            etapa="CALIBRATION",
+            status="ERROR",
+            error_code="LENGTH_CALIB_ERROR",
+            error_msg=str(e),
+            additional_data={"calibration_type": "length"}
+        )
+        return {"error": str(e)}, 500
 
 @app.route('/calibrate_zoi', methods=['POST'])
 def calibrate_zoi():
-    data = request.get_json()
-    print("Calibrate ZOI data:", data)
-    imageProcess.writeZOI(data)
-    return "ok"
+    try:
+        data = request.get_json()
+        print("Calibrate ZOI data:", data)
+        
+        imageProcess.writeZOI(data)
+        
+        logEvent(
+            etapa="CALIBRATION",
+            status="SUCCESS",
+            vision_params={"zoi": data},
+            additional_data={"calibration_type": "zoi"}
+        )
+        
+        return "ok"
+    except Exception as e:
+        logEvent(
+            etapa="CALIBRATION",
+            status="ERROR",
+            error_code="ZOI_CALIB_ERROR",
+            error_msg=str(e),
+            additional_data={"calibration_type": "zoi"}
+        )
+        return {"error": str(e)}, 500
 
 @app.route('/update_fish_params', methods=['POST'])
 def update_fish_params_route():
@@ -283,8 +423,18 @@ def update_config():
         try:
             with open(CONFIG_FILE, "r") as f:
                 config = json.load(f)
+                old_config = json.loads(json.dumps(config))  # Deep copy
         except Exception as e:
-            return json.dumps({"error": f"Error reading config file: {e}"}), 500, {"Content-Type": "application/json"}
+            error_msg = f"Error reading config file: {e}"
+            
+            logEvent(
+                etapa="CONFIG_UPDATE",
+                status="ERROR",
+                error_code="CONFIG_READ_ERROR",
+                error_msg=error_msg
+            )
+            
+            return json.dumps({"error": error_msg}), 500, {"Content-Type": "application/json"}
         
         updated_fields = []
         
@@ -331,8 +481,31 @@ def update_config():
         try:
             with open(CONFIG_FILE, "w") as f:
                 json.dump(config, f, indent=2)
+                
+            # Log actualización exitosa
+            logEvent(
+                etapa="CONFIG_UPDATE",
+                status="SUCCESS",
+                vision_params=config.get("vision_params"),
+                fish_params=data.get("species_params"),
+                additional_data={
+                    "updated_fields": updated_fields,
+                    "old_tailTrigger": old_config.get("tailTrigger") if "tailTrigger" in updated_fields else None,
+                    "new_tailTrigger": config.get("tailTrigger") if "tailTrigger" in updated_fields else None
+                }
+            )
+            
         except Exception as e:
-            return json.dumps({"error": f"Error writing config file: {e}"}), 500, {"Content-Type": "application/json"}
+            error_msg = f"Error writing config file: {e}"
+            
+            logEvent(
+                etapa="CONFIG_UPDATE",
+                status="ERROR",
+                error_code="CONFIG_WRITE_ERROR",
+                error_msg=error_msg
+            )
+            
+            return json.dumps({"error": error_msg}), 500, {"Content-Type": "application/json"}
         
         # Recargar configuración en imageProcess si es necesario
         if "tailTrigger" in updated_fields:
@@ -347,7 +520,16 @@ def update_config():
         }), 200, {"Content-Type": "application/json"}
         
     except Exception as e:
-        return json.dumps({"error": f"Unexpected error: {str(e)}"}), 500, {"Content-Type": "application/json"}
+        error_msg = f"Unexpected error: {str(e)}"
+        
+        logEvent(
+            etapa="CONFIG_UPDATE",
+            status="ERROR",
+            error_code="CONFIG_UNEXPECTED_ERROR",
+            error_msg=error_msg
+        )
+        
+        return json.dumps({"error": error_msg}), 500, {"Content-Type": "application/json"}
 
 @app.route('/get_config', methods=['GET'])
 def get_config():
@@ -376,4 +558,37 @@ def getAnalyzedImage():
 ######################################## Main ########################################
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port='3030', allow_unsafe_werkzeug=True)
+    # Log inicio de aplicación
+    logEvent(
+        etapa="SYSTEM",
+        status="INFO",
+        additional_data={
+            "event_type": "app_startup",
+            "description": "FFA Application started",
+            "dev_mode": DEV_MODE
+        }
+    )
+    
+    try:
+        socketio.run(app, host='0.0.0.0', port='3030', allow_unsafe_werkzeug=True)
+    except KeyboardInterrupt:
+        logEvent(
+            etapa="SYSTEM",
+            status="INFO",
+            additional_data={
+                "event_type": "app_shutdown",
+                "description": "FFA Application stopped by user"
+            }
+        )
+    except Exception as e:
+        logEvent(
+            etapa="SYSTEM",
+            status="ERROR",
+            error_code="APP_CRASH",
+            error_msg=str(e),
+            additional_data={
+                "event_type": "app_crash",
+                "description": "FFA Application crashed unexpectedly"
+            }
+        )
+        raise
