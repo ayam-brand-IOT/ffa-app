@@ -1,74 +1,79 @@
 {
-  "zoi": [
-    {
-      "x": 51,
-      "y": 92
-    },
-    {
-      "x": 940,
-      "y": 530
-    }
-  ],
-  "species_params": [
-    {
-      "name": "MACK",
-      "types": [
+    "zoi": [
         {
-          "typeName": "WR",
-          "parameters": {
-            "BODY_OFFSET": 10,
-            "HEAD_CUT_OFFSET": 15,
-            "TAIL_TRIGGER_DIAMETER": 20
-          }
+            "x": 51,
+            "y": 92
         },
         {
-          "typeName": "HG",
-          "parameters": {
-            "BODY_OFFSET": 12,
-            "HEAD_CUT_OFFSET": null,
-            "TAIL_TRIGGER_DIAMETER": 24
-          }
-        },
-        {
-          "typeName": "HGT",
-          "parameters": {
-            "BODY_OFFSET": null,
-            "HEAD_CUT_OFFSET": null,
-            "TAIL_TRIGGER_DIAMETER": null
-          }
+            "x": 940,
+            "y": 530
         }
-      ]
-    },
-    {
-      "name": "SAR",
-      "types": [
+    ],
+    "species_params": [
         {
-          "typeName": "WR",
-          "parameters": {
-            "BODY_OFFSET": 5,
-            "HEAD_CUT_OFFSET": 10,
-            "TAIL_TRIGGER_DIAMETER": 15
-          }
+            "name": "MACK",
+            "types": [
+                {
+                    "typeName": "WR",
+                    "parameters": {
+                        "BODY_OFFSET": 10,
+                        "HEAD_CUT_OFFSET": 15,
+                        "TAIL_TRIGGER_DIAMETER": 20
+                    }
+                },
+                {
+                    "typeName": "HG",
+                    "parameters": {
+                        "BODY_OFFSET": 12,
+                        "HEAD_CUT_OFFSET": null,
+                        "TAIL_TRIGGER_DIAMETER": 24
+                    }
+                },
+                {
+                    "typeName": "HGT",
+                    "parameters": {
+                        "BODY_OFFSET": null,
+                        "HEAD_CUT_OFFSET": null,
+                        "TAIL_TRIGGER_DIAMETER": null
+                    }
+                }
+            ]
         },
         {
-          "typeName": "HG",
-          "parameters": {
-            "BODY_OFFSET": 6,
-            "HEAD_CUT_OFFSET": null,
-            "TAIL_TRIGGER_DIAMETER": 18
-          }
-        },
-        {
-          "typeName": "HGT",
-          "parameters": {
-            "BODY_OFFSET": null,
-            "HEAD_CUT_OFFSET": null,
-            "TAIL_TRIGGER_DIAMETER": null
-          }
+            "name": "SAR",
+            "types": [
+                {
+                    "typeName": "WR",
+                    "parameters": {
+                        "BODY_OFFSET": 5,
+                        "HEAD_CUT_OFFSET": 10,
+                        "TAIL_TRIGGER_DIAMETER": 15
+                    }
+                },
+                {
+                    "typeName": "HG",
+                    "parameters": {
+                        "BODY_OFFSET": 6,
+                        "HEAD_CUT_OFFSET": null,
+                        "TAIL_TRIGGER_DIAMETER": 18
+                    }
+                },
+                {
+                    "typeName": "HGT",
+                    "parameters": {
+                        "BODY_OFFSET": null,
+                        "HEAD_CUT_OFFSET": null,
+                        "TAIL_TRIGGER_DIAMETER": null
+                    }
+                }
+            ]
         }
-      ]
+    ],
+    "ppmm": 0.23,
+    "tailTrigger": 50,
+    "current_fish_params": {
+        "BODY_OFFSET": 12,
+        "HEAD_CUT_OFFSET": null,
+        "TAIL_TRIGGER_DIAMETER": 24
     }
-  ],
-  "ppmm": 0.23,
-  "tailTrigger": 50
 }
