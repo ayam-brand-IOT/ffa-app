@@ -1,6 +1,6 @@
 """
 FFA Application Event Logger
-Sistema de logging para eventos de la aplicación FFA
+Sistema de logging para eventos de la aplicación FFA con vocabulario estandarizado
 """
 
 import os
@@ -9,6 +9,18 @@ import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
+
+# Importar constantes y validaciones
+from log_constants import (
+    ALLOWED_STATUS,
+    ALLOWED_ETAPAS,
+    ERROR_CODES,
+    validate_status,
+    validate_etapa,
+    validate_error_code,
+    get_error_description,
+    LogValidationError
+)
 
 # Versión de la aplicación
 APP_VERSION = "1.0.0"
@@ -70,22 +82,59 @@ class FFAEventLogger:
         vision_params: Optional[Dict[str, Any]] = None,
         error_code: Optional[str] = None,
         error_msg: Optional[str] = None,
-        additional_data: Optional[Dict[str, Any]] = None
+        additional_data: Optional[Dict[str, Any]] = None,
+        strict_validation: bool = False
     ):
         """
-        Registra un evento en el log
+        Registra un evento en el log con validación de vocabulario estandarizado
         
         Args:
-            etapa: Etapa del proceso (ej: 'CAPTURE', 'ANALYSIS', 'WEIGHT', 'SAVE')
-            status: Estado del evento (ej: 'SUCCESS', 'ERROR', 'WARNING', 'INFO')
+            etapa: Etapa del proceso (debe estar en ALLOWED_ETAPAS)
+            status: Estado del evento (debe estar en ALLOWED_STATUS)
             lote_id: ID del lote actual
             proveedor_id: ID del proveedor
             fish_params: Parámetros de pez actuales (species, type, params)
             vision_params: Parámetros de visión (zoi, ppmm, tailTrigger)
-            error_code: Código de error si aplica
+            error_code: Código de error si aplica (debe estar en ERROR_CODES)
             error_msg: Mensaje de error si aplica
             additional_data: Datos adicionales a registrar
+            strict_validation: Si True, lanza excepciones en validación. Si False, solo advierte.
+        
+        Raises:
+            LogValidationError: Si strict_validation=True y hay errores de validación
         """
+        # Validar etapa
+        try:
+            validate_etapa(etapa)
+        except LogValidationError as e:
+            if strict_validation:
+                raise
+            else:
+                self.logger.warning(f"VALIDACIÓN: {e}")
+                # Continuar con el log aunque no sea válido
+        
+        # Validar status
+        try:
+            validate_status(status)
+        except LogValidationError as e:
+            if strict_validation:
+                raise
+            else:
+                self.logger.warning(f"VALIDACIÓN: {e}")
+        
+        # Validar error_code si está presente
+        if error_code:
+            try:
+                validate_error_code(error_code)
+                # Si el error_msg está vacío pero el código existe, usar descripción
+                if not error_msg:
+                    error_msg = get_error_description(error_code)
+            except LogValidationError as e:
+                if strict_validation:
+                    raise
+                else:
+                    self.logger.warning(f"VALIDACIÓN: {e}")
+        
         timestamp = datetime.now().isoformat()
         
         event = {
@@ -261,21 +310,26 @@ def logEvent(
     vision_params: Optional[Dict[str, Any]] = None,
     error_code: Optional[str] = None,
     error_msg: Optional[str] = None,
-    additional_data: Optional[Dict[str, Any]] = None
+    additional_data: Optional[Dict[str, Any]] = None,
+    strict_validation: bool = False
 ):
     """
-    Función principal para registrar eventos (interfaz simple)
+    Función principal para registrar eventos (interfaz simple) con validación de vocabulario
     
     Args:
-        etapa: Etapa del proceso
-        status: Estado del evento ('SUCCESS', 'ERROR', 'WARNING', 'INFO')
+        etapa: Etapa del proceso (debe estar en ALLOWED_ETAPAS)
+        status: Estado del evento (debe estar en ALLOWED_STATUS: 'SUCCESS', 'ERROR', 'WARNING', 'INFO')
         lote_id: ID del lote
         proveedor_id: ID del proveedor
         fish_params: Parámetros de pez
         vision_params: Parámetros de visión
-        error_code: Código de error
+        error_code: Código de error (debe estar en ERROR_CODES)
         error_msg: Mensaje de error
         additional_data: Datos adicionales
+        strict_validation: Si True, lanza excepciones en validación. Si False, solo advierte.
+    
+    Raises:
+        LogValidationError: Si strict_validation=True y hay errores de validación
     """
     logger = get_logger()
     logger.log_event(
@@ -287,5 +341,6 @@ def logEvent(
         vision_params=vision_params,
         error_code=error_code,
         error_msg=error_msg,
-        additional_data=additional_data
+        additional_data=additional_data,
+        strict_validation=strict_validation
     )
