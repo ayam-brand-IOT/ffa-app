@@ -52,6 +52,17 @@ _belly_tare_offset = 0.0
 _calibration_points = []
 _calibration_step = 0
 
+# ============================= ESTABILIDAD DE PESO =============================
+# Para que el sistema detecte peso estable, mantenemos el mismo valor por 1.2s
+
+STABILITY_DURATION = 1.2  # Duración de estabilidad en segundos
+STABILITY_TOLERANCE = 0.05  # Tolerancia de variación durante estabilidad (gramos)
+
+# Estado de estabilidad
+_current_stable_weight = None
+_stability_start_time = None
+_last_weight_change_time = None
+
 # ============================= FUNCIONES DE MODO =============================
 
 def isOnTensionMode():
@@ -94,11 +105,15 @@ def enterToWeightMode():
 
 def setZero():
     """Establece el punto cero de la báscula"""
-    global _zero_offset
+    global _zero_offset, _current_stable_weight, _stability_start_time
     
     # Simular el ajuste de cero
     current_reading = _generate_weight_reading()
     _zero_offset = -current_reading
+    
+    # Resetear estabilidad para generar nuevo peso estable
+    _current_stable_weight = None
+    _stability_start_time = None
     
     print(f"🎯 [DEV] Configurando a cero (offset: {_zero_offset:.2f}g)")
     logEvent(
@@ -113,7 +128,7 @@ def setZero():
 
 def setTare(is_belly):
     """Establece la tara de la báscula o belly"""
-    global _tare_offset, _belly_tare_offset
+    global _tare_offset, _belly_tare_offset, _current_stable_weight, _stability_start_time, SIMULATED_WEIGHT_BASE
     
     if is_belly:
         current_reading = _generate_tension_reading()
@@ -130,8 +145,17 @@ def setTare(is_belly):
             }
         )
     else:
+        # Obtener el peso actual antes de aplicar la tara
         current_reading = _generate_weight_reading()
-        _tare_offset = -current_reading
+        _tare_offset = -current_reading - _zero_offset
+        
+        # Ajustar el peso base para que después de tara esté cerca de 0
+        # Esto simula que el objeto sigue en la báscula después de tarar
+        SIMULATED_WEIGHT_BASE = current_reading + _zero_offset
+        
+        # Resetear estabilidad para generar nuevo peso estable (que será ~0)
+        _current_stable_weight = None
+        _stability_start_time = None
         print(f"⚖️  [DEV] Tara establecida (offset: {_tare_offset:.2f}g)")
         
         logEvent(
@@ -147,13 +171,35 @@ def setTare(is_belly):
 # ============================= FUNCIONES DE LECTURA =============================
 
 def _generate_weight_reading():
-    """Genera una lectura de peso realista con variación"""
-    # Peso base con variación lenta (simula objeto real)
-    slow_variation = random.uniform(-WEIGHT_VARIATION, WEIGHT_VARIATION)
-    # Ruido rápido (simula vibraciones, aire, etc.)
-    noise = random.uniform(-WEIGHT_NOISE, WEIGHT_NOISE)
+    """
+    Genera una lectura de peso realista con variación
+    Mantiene estabilidad por 1.2s para permitir detección de peso estable
+    """
+    global _current_stable_weight, _stability_start_time, _last_weight_change_time
     
-    return SIMULATED_WEIGHT_BASE + slow_variation + noise
+    current_time = time.time()
+    
+    # Inicializar en primera llamada
+    if _current_stable_weight is None:
+        _current_stable_weight = SIMULATED_WEIGHT_BASE
+        _stability_start_time = current_time
+        _last_weight_change_time = current_time
+    
+    # Calcular tiempo en estabilidad actual
+    time_stable = current_time - _stability_start_time
+    
+    # Si ya pasaron 1.2s estables, generar nuevo peso y mantenerlo
+    if time_stable >= STABILITY_DURATION:
+        # Generar nuevo peso objetivo cada 1.2s
+        slow_variation = random.uniform(-WEIGHT_VARIATION, WEIGHT_VARIATION)
+        _current_stable_weight = SIMULATED_WEIGHT_BASE + slow_variation
+        _stability_start_time = current_time
+        _last_weight_change_time = current_time
+    
+    # Agregar solo ruido mínimo para simular lectura real pero estable
+    noise = random.uniform(-STABILITY_TOLERANCE, STABILITY_TOLERANCE)
+    
+    return _current_stable_weight + noise
 
 def _generate_tension_reading():
     """Genera una lectura de tensión realista con variación"""
@@ -417,8 +463,11 @@ def set_simulated_weight(weight):
     Args:
         weight: Peso en gramos
     """
-    global SIMULATED_WEIGHT_BASE
+    global SIMULATED_WEIGHT_BASE, _current_stable_weight, _stability_start_time
     SIMULATED_WEIGHT_BASE = weight
+    # Resetear estabilidad para usar nuevo peso inmediatamente
+    _current_stable_weight = None
+    _stability_start_time = None
     print(f"🔧 [DEV] Peso simulado configurado a {weight}g")
 
 def set_simulated_tension(tension):
@@ -434,11 +483,47 @@ def set_simulated_tension(tension):
 
 def reset_offsets():
     """Resetea todos los offsets de calibración"""
-    global _tare_offset, _zero_offset, _belly_tare_offset
+    global _tare_offset, _zero_offset, _belly_tare_offset, _current_stable_weight, _stability_start_time
     _tare_offset = 0.0
     _zero_offset = 0.0
     _belly_tare_offset = 0.0
+    # Resetear estabilidad también
+    _current_stable_weight = None
+    _stability_start_time = None
     print("🔄 [DEV] Offsets de calibración reseteados")
+
+def force_new_stable_weight():
+    """
+    Fuerza la generación de un nuevo peso estable
+    Útil para simular cambio de objeto en la báscula
+    """
+    global _current_stable_weight, _stability_start_time
+    _current_stable_weight = None
+    _stability_start_time = None
+    print("🔄 [DEV] Forzando nuevo peso estable")
+
+def get_stability_info():
+    """
+    Retorna información sobre el estado de estabilidad del peso
+    
+    Returns:
+        dict con información de estabilidad
+    """
+    current_time = time.time()
+    time_stable = 0.0
+    is_stable = False
+    
+    if _stability_start_time is not None:
+        time_stable = current_time - _stability_start_time
+        is_stable = time_stable >= STABILITY_DURATION
+    
+    return {
+        "is_stable": is_stable,
+        "time_stable": time_stable,
+        "stability_duration_required": STABILITY_DURATION,
+        "current_weight": _current_stable_weight,
+        "time_until_stable": max(0, STABILITY_DURATION - time_stable)
+    }
 
 def get_calibration_info():
     """
@@ -465,4 +550,5 @@ print("="*70)
 print("📝 Emulando weight transmitter sin hardware físico")
 print(f"⚖️  Peso base: {SIMULATED_WEIGHT_BASE}g ± {WEIGHT_VARIATION}g")
 print(f"🔬 Tensión base: {SIMULATED_TENSION_BASE} ± {TENSION_VARIATION}")
+print(f"⏱️  Estabilidad: {STABILITY_DURATION}s (para detección de peso estable)")
 print("✅ Módulo listo para testing\n")
