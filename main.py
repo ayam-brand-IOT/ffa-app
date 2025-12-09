@@ -10,7 +10,7 @@ if DEV_MODE:
 else:
     import TLB_MODBUS as net
     import IOs as ios
-    print("\n🏭 Modo Producción Activado - Usando hardware real")
+    print("\n Modo Producción Activado - Usando hardware real")
 
 import cv2
 import json
@@ -302,13 +302,13 @@ def video_stream():
     while True:
         frame = imageProcess.updateImage()
         if frame is None:
-            time.sleep(0.1)
+            # time.sleep(0.1)
             continue
         cv2.line(frame, (200, 0), (200, 1000), (0, 0, 255), 1) # blue vertical line
         cv2.line(frame, (0, 330), (1000, 330), (0, 0, 255), 1) # blue horizontal line
         ret, buffer = cv2.imencode('.jpeg', frame)
         if not ret:
-            time.sleep(0.1)
+            # time.sleep(0.1)
             continue
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
