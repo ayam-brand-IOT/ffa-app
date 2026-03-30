@@ -125,6 +125,20 @@ def get_analysis_data(data=None):
     emit('analysis_data', imageProcess.get_analysis_data())
 
 
+def _run_analysis_in_tpool():
+    """Greenlet that offloads the CPU-intensive OpenCV analysis to a real OS
+    thread via eventlet.tpool so the eventlet IO loop is never blocked."""
+    import eventlet
+    try:
+        eventlet.tpool.execute(imageProcess.run_analysis)
+        logEvent(etapa="CAPTURE", status="SUCCESS",
+                 additional_data={"action": "capture_completed"})
+    except Exception as e:
+        logEvent(etapa="CAPTURE", status="ERROR",
+                 error_code="CAPTURE_ERROR", error_msg=str(e))
+        print(f"Error en análisis: {e}")
+
+
 @socketio.event
 def capture(data=None):
     try:
@@ -133,9 +147,10 @@ def capture(data=None):
         print("capturing")
         logEvent(etapa="CAPTURE", status="INFO",
                  additional_data={"action": "capture_started"})
+        # Snapshot frame and store callback immediately (fast)
         imageProcess.handle_capture(frame_is_ready)
-        logEvent(etapa="CAPTURE", status="SUCCESS",
-                 additional_data={"action": "capture_completed"})
+        # Dispatch heavy analysis to a real OS thread; returns immediately
+        socketio.start_background_task(_run_analysis_in_tpool)
     except Exception as e:
         logEvent(etapa="CAPTURE", status="ERROR",
                  error_code="CAPTURE_ERROR", error_msg=str(e))

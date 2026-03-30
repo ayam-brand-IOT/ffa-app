@@ -14,6 +14,7 @@ _camera_unavailable = False
 _frame_lock = Lock()   # protects _latest_frame (camera thread)
 _state_lock = Lock()  # protects captured, captured_data, last_frame, frameReadyCallback
 _latest_frame = None
+_pending_frame = None  # frame snapshotted at capture time, consumed by run_analysis()
 _capture_thread = None
 
 def _open_camera():
@@ -177,11 +178,13 @@ def writeZOI(points):
         print(f"Error writting ZOI: {e}")
 
 def handle_capture(callback):
-    global captured, frameReadyCallback
+    """Snapshot the current frame and store callback. Analysis is triggered
+    separately via run_analysis() in a real OS thread."""
+    global _pending_frame, frameReadyCallback
     print("capture")
     with _state_lock:
         frameReadyCallback = callback
-        captured = True
+        _pending_frame = get_stream_frame()  # snapshot BEFORE returning to caller
 
 def getAnalyzedImage():
     with _state_lock:
@@ -198,213 +201,185 @@ def handle_reset():
         captured_data = None
     print("reset")
 
-def updateImage():
-    global captured, img_counter, last_frame, zoi_x1, captured_data, frameReadyCallback, zero_line
-    frame = get_stream_frame()
-    if frame is None:
-        return None
+def run_analysis():
+    """Full OpenCV analysis pipeline. MUST be called via eventlet.tpool.execute()
+    so it runs in a real OS thread and does not block the eventlet IO loop
+    during CPU-intensive processing.
+    """
+    global img_counter, last_frame, captured_data
     with _state_lock:
-        _should_capture = captured
-    if _should_capture:
-        print("Capturing image")
+        frame = _pending_frame
+        _callback = frameReadyCallback
+    if frame is None:
+        print("run_analysis: no pending frame, skipping")
+        return
+
+    print("Capturing image")
+
+    # Early dimension validation
+    height, width = frame.shape[:2]
+    if zero_line >= width or zoi_x2 > width or zoi_y2 > height:
+        print(f"ERROR: Dimensiones inválidas - frame: {width}x{height}, zoi_x2: {zoi_x2}, zero_line: {zero_line}")
+        return
+
+    # Save raw frame in a background thread so we don't wait on disk IO
+    img_name = __MAIN_PATH__ + "{}.png".format(img_counter)
+    Thread(target=lambda: cv2.imwrite(img_name, frame), daemon=True).start()
+    print("{} saving in background...".format(img_name))
+
+    im = frame.copy()
+    img_counter += 1
         
-        # Optimización: Validación temprana de dimensiones para evitar procesamiento innecesario
-        height, width = frame.shape[:2]
-        if zero_line >= width or zoi_x2 > width or zoi_y2 > height:
-            print(f"ERROR: Dimensiones inválidas - frame: {width}x{height}, zoi_x2: {zoi_x2}, zero_line: {zero_line}")
-            captured = False
-            return frame
+    body_offset_value = 0.0
+    head_cut_offset_value = 0.0
+    tail_trigger_diameter_value = 0.0
+    if fish_parameters:
 
-        # Optimización: Guardar imagen en thread separado para no bloquear
-        img_name = __MAIN_PATH__ + "{}.png".format(img_counter)
-        Thread(target=lambda: cv2.imwrite(img_name, frame), daemon=True).start()
-        print("{} saving in background...".format(img_name))
+        raw_BO = fish_parameters.get("BODY_OFFSET")
+        if raw_BO is not None:
+            try:
+                body_offset_value = float(raw_BO)
+            except (TypeError, ValueError):
+                body_offset_value = 0.0
 
-        im = frame.copy()
-        img_counter += 1
-        
-        body_offset_value = 0.0
-        head_cut_offset_value = 0.0
-        tail_trigger_diameter_value = 0.0
-        if fish_parameters:
+        raw_HC = fish_parameters.get("HEAD_CUT_OFFSET")
+        if raw_HC is not None:
+            try:
+                head_cut_offset_value = float(raw_HC)
+            except (TypeError, ValueError):
+                head_cut_offset_value = 0.0
 
-            raw_BO = fish_parameters.get("BODY_OFFSET")
-            if raw_BO is not None:
-                try:
-                    body_offset_value = float(raw_BO)
-                except (TypeError, ValueError):
-                    body_offset_value = 0.0
+        raw_TD = fish_parameters.get("TAIL_TRIGGER_DIAMETER")
+        if raw_TD is not None:
+            try:
+                tail_trigger_diameter_value = float(raw_TD)
+            except (TypeError, ValueError):
+                tail_trigger_diameter_value = 0.0
 
-            raw_HC = fish_parameters.get("HEAD_CUT_OFFSET")
-            if raw_HC is not None:
-                try:
-                    head_cut_offset_value = float(raw_HC)
-                except (TypeError, ValueError):
-                    head_cut_offset_value = 0.0
+    img = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(img, (5, 5), 0)
+    ret3, th3 = cv2.threshold(blur, 0, 1, cv2.THRESH_OTSU)
+    ret4, BW = cv2.threshold(blur, ret3 * lytho, 1, cv2.THRESH_BINARY)
 
-            raw_TD = fish_parameters.get("TAIL_TRIGGER_DIAMETER")
-            if raw_TD is not None:
-                try:
-                    tail_trigger_diameter_value = float(raw_TD)
-                except (TypeError, ValueError):
-                    tail_trigger_diameter_value = 0.0
-            
+    height, width = BW.shape
+    print(f"Dimensiones de BW: {BW.shape}")
 
-        img = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-        # Optimización: Reducir kernel de GaussianBlur de 13x13 a 5x5 (~25x más rápido)
-        blur = cv2.GaussianBlur(img, (5, 5), 0)
-        ret3, th3 = cv2.threshold(blur, 0, 1, cv2.THRESH_OTSU)
-        ret4, BW = cv2.threshold(blur, ret3 * lytho, 1, cv2.THRESH_BINARY)
-
-        # Verificar dimensiones de la imagen
-        height, width = BW.shape
-        print(f"Dimensiones de BW: {BW.shape}")
-
-        # Convert the user-provided A, B, and C lengths (mm) into pixel offsets.
-        if coef_calibration > 0:
-            Body_Offset = int(round(body_offset_value / coef_calibration))
-            Head_Cut_Offset = int(round(head_cut_offset_value / coef_calibration))
-            Tail_Trigger_Diameter = int(round(tail_trigger_diameter_value / coef_calibration))
-        else:
-            Body_Offset = int(round(body_offset_value))
-            Head_Cut_Offset = int(round(head_cut_offset_value))
-            Tail_Trigger_Diameter = int(round(tail_trigger_diameter_value))
-
-        # Optimización: Usar numpy clipping (más eficiente)
-        max_offset = max(0, width - zero_line)
-        Body_Offset = np.clip(Body_Offset, 0, max_offset)
-        Head_Cut_Offset = np.clip(Head_Cut_Offset, 0, max_offset)
-        Tail_Trigger_Diameter = np.clip(Tail_Trigger_Diameter, 0, max_offset)
-        print(f"Offsets (px) -> A: {Body_Offset}, B: {Head_Cut_Offset}, C: {Tail_Trigger_Diameter}")
-
-        # Asegurarse de que zero_line < zoi_x2
-        if zero_line >= zoi_x2:
-            print(f"Ajustando zero_line de {zero_line} a {zoi_x1}")
-            zero_line = zoi_x1
-
-        # Clipping de índices para estar dentro de los límites de la imagen
-        zoi_y1_clipped = max(0, min(zoi_y1, height))
-        zoi_y2_clipped = max(0, min(zoi_y2, height))
-        zero_line_clipped = max(0, min(zero_line+Body_Offset + Head_Cut_Offset, width))
-        zoi_x2_clipped = max(0, min(zoi_x2, width))
-
-        # Definir la Zona de Interés (ZOI)
-        ROIBW = BW[zoi_y1_clipped:zoi_y2_clipped, zero_line_clipped:zoi_x2_clipped]
-
-        # Verificar si ROIBW tiene dimensiones válidas
-        if ROIBW.size == 0 or ROIBW.shape[1] == 0:
-            print("ROIBW tiene dimensiones inválidas. Verifique los valores de zoi_y1, zoi_y2, zero_line y zoi_x2.")
-            captured = False
-            return frame
-
-        print(f"ROIBW shape: {ROIBW.shape}")
-        
-        
-        cv2.line(im, (zero_line, 0), (zero_line, 1000), (0, 0, 255), 1) # red vertical line of the laser
-        cv2.line(im, (0, 330), (1000, 330), (0, 0, 255), 1) # red horizontal line of the laser
-
-        cv2.rectangle(im, (zoi_x1, zoi_y1), (zoi_x2, zoi_y2), (0, 255, 0), 1)
-        cv2.rectangle(im, (zero_line_clipped, zoi_y1_clipped), (zoi_x2_clipped, zoi_y2_clipped), (0, 0, 255), 1)
-        cv2.putText(im, "Zone Of Interest", (zoi_x2-150, zoi_y2+30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,150,0), 1)
-        # cv2.line(im, (zero_line, zoi_y1), (zero_line, zoi_y2), (0,0,255), 1) # red vertical line >> line of the zero
-        cv2.line(im, (zero_line + Head_Cut_Offset, zoi_y1), (zero_line + Head_Cut_Offset, zoi_y2), (0,165,255), 1) # orange vertical >> head cut line
-        cv2.line(im, (zero_line + Body_Offset + Head_Cut_Offset, zoi_y1), (zero_line + Body_Offset + Head_Cut_Offset, zoi_y2), (200,200,200), 1) # grey vertical line >> of the body offset
-
-        # Optimización: Calcular diameter con numpy (mucho más rápido que loop)
-        # Size of the fish from zero line to tail
-        diameter = np.sum(1 - ROIBW, axis=0).tolist()  # sum all the '0' pixels on Y axis for each column
-        
-        # Encontrar índice donde diameter <= Tail_Trigger_Diameter
-        tail_indices = np.where(np.array(diameter) <= Tail_Trigger_Diameter)[0]
-        if len(tail_indices) > 0:
-            j = tail_indices[0]
-        else:
-            j = len(diameter) - 1
-
-        # Verificar que la lista 'diameter' no esté vacía
-        if len(diameter) == 0:
-            print("La lista 'diameter' está vacía, no se puede calcular el máximo. Verifique los valores de ROIBW.")
-            captured = False
-            return frame
-
-        bodyLength = j + Body_Offset
-        
-        bodyLength_start_x = zero_line + Head_Cut_Offset
-        bodyLength_end_x = zero_line + bodyLength + Head_Cut_Offset
-        body_color = (138, 43, 226)
-        bodyLength_mm = bodyLength * coef_calibration
-        
-        # Display Line bodyLength
-        cv2.line(im, (bodyLength_end_x, zoi_y1), (bodyLength_end_x, zoi_y2), (255,0,0), 1) # Blue Line to show the end of the fish
-        cv2.arrowedLine(im, (bodyLength_start_x, zoi_y1+20), (bodyLength_end_x, zoi_y1+20), (0,0,255), 2, 1, 0, 0.03)
-        cv2.arrowedLine(im, (bodyLength_end_x, zoi_y1+20), (bodyLength_start_x, zoi_y1+20), (0,0,255), 2, 1, 0, 0.03)
-        cv2.putText(im, "bodyLength : " + str(round(bodyLength_mm,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
-
-
-        cv2.putText(im, "Head Cut offset : " + str(round(head_cut_offset_value,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,165,0), 2)
-        cv2.putText(im, "Body offset : " + str(round(body_offset_value,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+130), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
-        cv2.putText(im, "bodyLength_body : " + str(round(bodyLength_mm,1)) + " mm", (bodyLength+zero_line+20, zoi_y1+170), cv2.FONT_HERSHEY_SIMPLEX, 0.8, body_color, 2)
-
-        # Optimización: Calcular área con una sola suma (np.sum ya opera sobre todo el array)
-        bodySurface = np.sum(1 - ROIBW[:, 1:bodyLength])
-        print('Black area is: ' + str(bodySurface))
-
-        # Optimización: Calcular diámetro máximo con numpy (más eficiente)
-        bodyDiameter = np.max(diameter[:j+1]) if j > 0 else 0
-        bodyDiameterindex = int(np.argmax(diameter[:j+1])) if j > 0 else 0
-        c = (1 - ROIBW[:, bodyDiameterindex])
-
-        for i in range(len(c)):
-            if c[i] == 1:
-                cv2.circle(im, (zero_line + bodyDiameterindex + Head_Cut_Offset + Body_Offset, i+zoi_y1), 1, (200, 0, 255), 1)
-
-        print('bodyDiameter is: ' + str(bodyDiameter))
-
-        cv2.putText(im, "bodyDiameter : " + str(round(bodyDiameter*coef_calibration,1)) + " mm", (bodyDiameterindex+zero_line+20, zoi_y1+250), cv2.FONT_HERSHEY_SIMPLEX, 1, (200,0,255), 3)
-
-        # Ajuste de índices para la cabeza
-        zoi_x1_clipped = max(0, min(zoi_x1, width))
-        zoi_x2_clipped = max(0, min(zoi_x2, width))
-        ROIBW_HEAD = BW[zoi_y1_clipped:zoi_y2_clipped, zoi_x1_clipped:zero_line_clipped]
-
-        # Verificar si ROIBW_HEAD tiene dimensiones válidas
-        if ROIBW_HEAD.size == 0 or ROIBW_HEAD.shape[1] == 0:
-            print("ROIBW_HEAD tiene dimensiones inválidas. Verifique los valores de zoi_x1 y zero_line.")
-            captured = False
-            return frame
-
-        # Optimización: Calcular tamaño de cabeza con numpy (más eficiente)
-        head_diameter = np.sum(1 - ROIBW_HEAD, axis=0)
-        head_indices = np.where(head_diameter > 2)[0]
-        if len(head_indices) > 0:
-            j = head_indices[0]
-            headLength = zero_line - j - zoi_x1
-        else:
-            headLength = 0
-        print('headLength is: ' + str(headLength))
-
-        cv2.line(im, (zero_line - headLength, zoi_y1), (zero_line - headLength, zoi_y2), (255,0,0), 1)
-        cv2.arrowedLine(im, (zero_line + Head_Cut_Offset, zoi_y2), (zero_line - headLength, zoi_y2), (0,0,255), 2, 1, 0, 0.04)
-        cv2.arrowedLine(im, (zero_line - headLength, zoi_y2), (zero_line + Head_Cut_Offset, zoi_y2), (0,0,255), 2, 1, 0, 0.04)
-        cv2.putText(im, "headLength : " + str(abs(round(headLength*coef_calibration,1))) + " mm", (headLength+zero_line+20, zoi_y2+40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 3)
-
-        last_frame = im
-        
-        # Optimización: Usar json.dumps en lugar de concatenación de strings
-        _new_data = json.dumps({
-            "length": round(bodyLength_mm, 1),
-            "height": round(bodyDiameter * coef_calibration, 1),
-            "head": abs(round(headLength * coef_calibration, 1)),
-            "tail_trigger": round(Tail_Trigger_Diameter * coef_calibration, 1)
-        })
-
-        with _state_lock:
-            last_frame = im
-            captured_data = _new_data
-            captured = False
-            _callback = frameReadyCallback
-        _callback()
-        return frame
-
+    if coef_calibration > 0:
+        Body_Offset = int(round(body_offset_value / coef_calibration))
+        Head_Cut_Offset = int(round(head_cut_offset_value / coef_calibration))
+        Tail_Trigger_Diameter = int(round(tail_trigger_diameter_value / coef_calibration))
     else:
-        return frame
+        Body_Offset = int(round(body_offset_value))
+        Head_Cut_Offset = int(round(head_cut_offset_value))
+        Tail_Trigger_Diameter = int(round(tail_trigger_diameter_value))
+
+    max_offset = max(0, width - zero_line)
+    Body_Offset = np.clip(Body_Offset, 0, max_offset)
+    Head_Cut_Offset = np.clip(Head_Cut_Offset, 0, max_offset)
+    Tail_Trigger_Diameter = np.clip(Tail_Trigger_Diameter, 0, max_offset)
+    print(f"Offsets (px) -> A: {Body_Offset}, B: {Head_Cut_Offset}, C: {Tail_Trigger_Diameter}")
+
+    if zero_line >= zoi_x2:
+        print(f"Ajustando zero_line de {zero_line} a {zoi_x1}")
+        zero_line = zoi_x1
+
+    zoi_y1_clipped = max(0, min(zoi_y1, height))
+    zoi_y2_clipped = max(0, min(zoi_y2, height))
+    zero_line_clipped = max(0, min(zero_line + Body_Offset + Head_Cut_Offset, width))
+    zoi_x2_clipped = max(0, min(zoi_x2, width))
+
+    ROIBW = BW[zoi_y1_clipped:zoi_y2_clipped, zero_line_clipped:zoi_x2_clipped]
+
+    if ROIBW.size == 0 or ROIBW.shape[1] == 0:
+        print("ROIBW tiene dimensiones inválidas.")
+        return
+
+    print(f"ROIBW shape: {ROIBW.shape}")
+
+    cv2.line(im, (zero_line, 0), (zero_line, 1000), (0, 0, 255), 1)
+    cv2.line(im, (0, 330), (1000, 330), (0, 0, 255), 1)
+    cv2.rectangle(im, (zoi_x1, zoi_y1), (zoi_x2, zoi_y2), (0, 255, 0), 1)
+    cv2.rectangle(im, (zero_line_clipped, zoi_y1_clipped), (zoi_x2_clipped, zoi_y2_clipped), (0, 0, 255), 1)
+    cv2.putText(im, "Zone Of Interest", (zoi_x2-150, zoi_y2+30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 150, 0), 1)
+    cv2.line(im, (zero_line + Head_Cut_Offset, zoi_y1), (zero_line + Head_Cut_Offset, zoi_y2), (0, 165, 255), 1)
+    cv2.line(im, (zero_line + Body_Offset + Head_Cut_Offset, zoi_y1), (zero_line + Body_Offset + Head_Cut_Offset, zoi_y2), (200, 200, 200), 1)
+
+    diameter = np.sum(1 - ROIBW, axis=0).tolist()
+
+    tail_indices = np.where(np.array(diameter) <= Tail_Trigger_Diameter)[0]
+    j = tail_indices[0] if len(tail_indices) > 0 else len(diameter) - 1
+
+    if len(diameter) == 0:
+        print("La lista 'diameter' está vacía.")
+        return
+
+    bodyLength = j + Body_Offset
+    bodyLength_start_x = zero_line + Head_Cut_Offset
+    bodyLength_end_x = zero_line + bodyLength + Head_Cut_Offset
+    body_color = (138, 43, 226)
+    bodyLength_mm = bodyLength * coef_calibration
+
+    cv2.line(im, (bodyLength_end_x, zoi_y1), (bodyLength_end_x, zoi_y2), (255, 0, 0), 1)
+    cv2.arrowedLine(im, (bodyLength_start_x, zoi_y1+20), (bodyLength_end_x, zoi_y1+20), (0, 0, 255), 2, 1, 0, 0.03)
+    cv2.arrowedLine(im, (bodyLength_end_x, zoi_y1+20), (bodyLength_start_x, zoi_y1+20), (0, 0, 255), 2, 1, 0, 0.03)
+    cv2.putText(im, "bodyLength : " + str(round(bodyLength_mm, 1)) + " mm", (bodyLength+zero_line+20, zoi_y1+30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
+    cv2.putText(im, "Head Cut offset : " + str(round(head_cut_offset_value, 1)) + " mm", (bodyLength+zero_line+20, zoi_y1+90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 165, 0), 2)
+    cv2.putText(im, "Body offset : " + str(round(body_offset_value, 1)) + " mm", (bodyLength+zero_line+20, zoi_y1+130), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+    cv2.putText(im, "bodyLength_body : " + str(round(bodyLength_mm, 1)) + " mm", (bodyLength+zero_line+20, zoi_y1+170), cv2.FONT_HERSHEY_SIMPLEX, 0.8, body_color, 2)
+
+    bodySurface = np.sum(1 - ROIBW[:, 1:bodyLength])
+    print('Black area is: ' + str(bodySurface))
+
+    bodyDiameter = np.max(diameter[:j+1]) if j > 0 else 0
+    bodyDiameterindex = int(np.argmax(diameter[:j+1])) if j > 0 else 0
+    c = (1 - ROIBW[:, bodyDiameterindex])
+
+    for i in range(len(c)):
+        if c[i] == 1:
+            cv2.circle(im, (zero_line + bodyDiameterindex + Head_Cut_Offset + Body_Offset, i+zoi_y1), 1, (200, 0, 255), 1)
+
+    print('bodyDiameter is: ' + str(bodyDiameter))
+    cv2.putText(im, "bodyDiameter : " + str(round(bodyDiameter*coef_calibration, 1)) + " mm", (bodyDiameterindex+zero_line+20, zoi_y1+250), cv2.FONT_HERSHEY_SIMPLEX, 1, (200, 0, 255), 3)
+
+    zoi_x1_clipped = max(0, min(zoi_x1, width))
+    zoi_x2_clipped = max(0, min(zoi_x2, width))
+    ROIBW_HEAD = BW[zoi_y1_clipped:zoi_y2_clipped, zoi_x1_clipped:zero_line_clipped]
+
+    if ROIBW_HEAD.size == 0 or ROIBW_HEAD.shape[1] == 0:
+        print("ROIBW_HEAD tiene dimensiones inválidas.")
+        return
+
+    head_diameter = np.sum(1 - ROIBW_HEAD, axis=0)
+    head_indices = np.where(head_diameter > 2)[0]
+    if len(head_indices) > 0:
+        j = head_indices[0]
+        headLength = zero_line - j - zoi_x1
+    else:
+        headLength = 0
+    print('headLength is: ' + str(headLength))
+
+    cv2.line(im, (zero_line - headLength, zoi_y1), (zero_line - headLength, zoi_y2), (255, 0, 0), 1)
+    cv2.arrowedLine(im, (zero_line + Head_Cut_Offset, zoi_y2), (zero_line - headLength, zoi_y2), (0, 0, 255), 2, 1, 0, 0.04)
+    cv2.arrowedLine(im, (zero_line - headLength, zoi_y2), (zero_line + Head_Cut_Offset, zoi_y2), (0, 0, 255), 2, 1, 0, 0.04)
+    cv2.putText(im, "headLength : " + str(abs(round(headLength*coef_calibration, 1))) + " mm", (headLength+zero_line+20, zoi_y2+40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
+
+    _new_data = json.dumps({
+        "length": round(bodyLength_mm, 1),
+        "height": round(bodyDiameter * coef_calibration, 1),
+        "head": abs(round(headLength * coef_calibration, 1)),
+        "tail_trigger": round(Tail_Trigger_Diameter * coef_calibration, 1)
+    })
+
+    with _state_lock:
+        last_frame = im
+        captured_data = _new_data
+    # Call callback OUTSIDE the lock to avoid deadlocks
+    if _callback:
+        _callback()
+
+
+def updateImage():
+    """Lightweight: returns the latest camera frame for the live video stream.
+    Analysis is done separately in run_analysis() via a real OS thread.
+    """
+    return get_stream_frame()
