@@ -2,9 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Instalar dependencias del sistema necesarias para OpenCV y otras librerías
+# libgl1-mesa-glx was removed in Debian Trixie; libgl1 + libglx-mesa0 replace it.
 RUN apt-get update && apt-get install -y \
-    libgl1-mesa-glx \
+    libgl1 \
+    libglx-mesa0 \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
@@ -12,11 +13,9 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar Pipfile y Pipfile.lock
-COPY Pipfile Pipfile.lock ./
-
-# Instalar pipenv y las dependencias de Python
-RUN pip install pipenv && pipenv install --system --deploy
+# Instalar dependencias de Python directamente desde requirements.txt
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar el código de la aplicación
 COPY . .
