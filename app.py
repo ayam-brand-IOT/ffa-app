@@ -19,7 +19,8 @@ socketio = SocketIO(
     async_mode='threading',
     logger=False,
     engineio_logger=False,
-    transports=['polling'],
+    # No transports restriction: allows WebSocket upgrade, falling back to polling.
+    # Forcing polling-only caused 'Too many packets in payload' errors under load.
 )
 
 # Shared lock used by socket handlers that call hardware directly.

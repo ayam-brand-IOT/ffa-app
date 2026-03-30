@@ -31,16 +31,18 @@ def _video_stream():
                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
 
 
-def _analyzed_image():
+def _analyzed_image_response():
+    """Return the analyzed frame as a single JPEG response (not a stream).
+    Using an MJPEG stream for a static <img> tag kept the connection open
+    indefinitely, causing 4-12 s delays before the image appeared.
+    """
     frame = imageProcess.getAnalyzedImage()
     if frame is None:
-        return
+        return None, None
     ret, buffer = cv2.imencode('.jpeg', frame)
     if not ret:
-        return
-    socketio.emit('analysis_data', imageProcess.get_analysis_data())
-    yield (b'--frame\r\n'
-           b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+        return None, None
+    return buffer.tobytes(), imageProcess.get_analysis_data()
 
 
 # ─────────────────────────── SPA catch-all ────────────────────────────────
@@ -60,7 +62,13 @@ def video_feed():
 
 @app.route('/analyzed_image')
 def analyzed_image():
-    return Response(_analyzed_image(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    jpeg_bytes, analysis_data = _analyzed_image_response()
+    if jpeg_bytes is None:
+        return '', 204
+    # Push analysis data alongside the image
+    if analysis_data is not None:
+        socketio.emit('analysis_data', analysis_data)
+    return Response(jpeg_bytes, mimetype='image/jpeg')
 
 
 # ─────────────────────────── calibration ──────────────────────────────────
