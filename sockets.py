@@ -127,10 +127,17 @@ def get_analysis_data(data=None):
 
 def _run_analysis_in_tpool():
     """Greenlet that offloads the CPU-intensive OpenCV analysis to a real OS
-    thread via eventlet.tpool so the eventlet IO loop is never blocked."""
+    thread via eventlet.tpool so the eventlet IO loop is never blocked.
+
+    IMPORTANT: frame_is_ready() (which calls socketio.emit) is called here,
+    AFTER tpool.execute() returns, so we are back in greenlet context.
+    run_analysis() must NOT call the callback itself.
+    """
     import eventlet.tpool
     try:
         eventlet.tpool.execute(imageProcess.run_analysis)
+        # Back in greenlet context — safe to emit socket events
+        frame_is_ready()
         logEvent(etapa="CAPTURE", status="SUCCESS",
                  additional_data={"action": "capture_completed"})
     except Exception as e:

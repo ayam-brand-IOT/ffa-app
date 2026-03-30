@@ -4,15 +4,22 @@ import math
 import json
 import time
 import os
-from threading import Lock, Thread
+from threading import Thread
+
+# Use native (unpatched) threading locks so they work correctly from both
+# eventlet greenlets AND real OS threads (eventlet.tpool). After
+# eventlet.monkey_patch() runs, threading.Lock() becomes an eventlet lock
+# which cannot be safely acquired from a tpool OS thread.
+import eventlet.patcher as _patcher
+_native_threading = _patcher.original('threading')
 
 # Initialize camera lazily to avoid errors when the device is missing. Track
 # when the camera is unavailable so we do not spam warnings by retrying on
 # every frame.
 cap = None
 _camera_unavailable = False
-_frame_lock = Lock()   # protects _latest_frame (camera thread)
-_state_lock = Lock()  # protects captured, captured_data, last_frame, frameReadyCallback
+_frame_lock = _native_threading.Lock()   # protects _latest_frame (camera thread)
+_state_lock = _native_threading.Lock()  # protects captured, captured_data, last_frame, frameReadyCallback
 _latest_frame = None
 _pending_frame = None  # frame snapshotted at capture time, consumed by run_analysis()
 _capture_thread = None
@@ -209,7 +216,6 @@ def run_analysis():
     global img_counter, last_frame, captured_data, zero_line
     with _state_lock:
         frame = _pending_frame
-        _callback = frameReadyCallback
     if frame is None:
         print("run_analysis: no pending frame, skipping")
         return
@@ -373,9 +379,11 @@ def run_analysis():
     with _state_lock:
         last_frame = im
         captured_data = _new_data
-    # Call callback OUTSIDE the lock to avoid deadlocks
-    if _callback:
-        _callback()
+    # NOTE: do NOT call the frame_ready callback here.
+    # run_analysis() executes inside an eventlet.tpool OS thread, so calling
+    # socketio.emit() from here would corrupt the eventlet IO loop.
+    # The callback is invoked by _run_analysis_in_tpool() in sockets.py,
+    # which runs in a greenlet after tpool.execute() returns.
 
 
 def updateImage():
