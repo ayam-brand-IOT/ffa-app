@@ -1,3 +1,10 @@
+# eventlet.monkey_patch() MUST be the very first thing that runs.
+# It replaces Python's stdlib (socket, threading, time, etc.) with
+# eventlet-compatible greenlet versions.  Doing this after any import
+# that touches those modules is too late and causes subtle bugs.
+import eventlet
+eventlet.monkey_patch()
+
 # hardware must be imported first so that net/ios are available before
 # sockets.py and routes.py are loaded.
 import hardware  # noqa: F401 - side-effect import (sets up net/ios)

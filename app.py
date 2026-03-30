@@ -16,11 +16,9 @@ log.setLevel(logging.ERROR)
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode='threading',
+    async_mode='eventlet',  # eventlet provides its own WSGI server with native WebSocket support
     logger=False,
     engineio_logger=False,
-    # No transports restriction: allows WebSocket upgrade, falling back to polling.
-    # Forcing polling-only caused 'Too many packets in payload' errors under load.
 )
 
 # Shared lock used by socket handlers that call hardware directly.

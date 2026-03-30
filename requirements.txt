@@ -1,3 +1,4 @@
+eventlet>=0.35.2
 bidict==0.23.1
 certifi==2024.2.2
 click==8.1.7

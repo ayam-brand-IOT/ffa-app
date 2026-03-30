@@ -7,6 +7,7 @@ routes are registered directly on the shared `app` instance).
 
 import cv2
 import json
+import eventlet
 import imageProcess
 from flask import render_template, Response, request
 
@@ -19,6 +20,10 @@ from services.config_service import update_fish_params, update_config, get_confi
 
 def _video_stream():
     while True:
+        # eventlet.sleep(0) yields control to other greenlets so that
+        # socket handlers, the analyzed_image route, etc. are not starved
+        # by this tight encoding loop.
+        eventlet.sleep(0)
         frame = imageProcess.updateImage()
         if frame is None:
             continue
