@@ -206,7 +206,7 @@ def run_analysis():
     so it runs in a real OS thread and does not block the eventlet IO loop
     during CPU-intensive processing.
     """
-    global img_counter, last_frame, captured_data
+    global img_counter, last_frame, captured_data, zero_line
     with _state_lock:
         frame = _pending_frame
         _callback = frameReadyCallback
