@@ -1,6 +1,7 @@
 import serial
 import time
 import minimalmodbus
+from threading import Lock
 
 # Modbus slave ID
 SLAVE_ID = 1
@@ -12,6 +13,9 @@ __TENSION_MODE = 1
 READING_MODE = __WEIGHT_MODE
 
 isCalibrating = False
+
+# Internal lock: protects shared state AND serial port access (minimalmodbus is not thread-safe)
+_lock = Lock()
 
 # Modbus address 
 __CMDREG = 0x05 # 5
@@ -60,48 +64,52 @@ instrument2.byteorder = minimalmodbus.BYTEORDER_LITTLE
 
     
 def isOnTensionMode():
-    return READING_MODE == __TENSION_MODE
+    with _lock:
+        return READING_MODE == __TENSION_MODE
 
 def enterToTensionTest():
     global READING_MODE, isCalibrating
-    isCalibrating = False
-    READING_MODE = __TENSION_MODE
+    with _lock:
+        isCalibrating = False
+        READING_MODE = __TENSION_MODE
 
 def enterToWeightMode():
     global READING_MODE, isCalibrating
-    isCalibrating = False
-    READING_MODE = __WEIGHT_MODE
+    with _lock:
+        isCalibrating = False
+        READING_MODE = __WEIGHT_MODE
 
 def setZero():
     print("Setting to Zero")
-    instrument.write_register(__CMDREG, __CMD_ZERO)
+    with _lock:
+        instrument.write_register(__CMDREG, __CMD_ZERO)
     # answerStatus()
-    
+
 def setTare(is_belly):
     if is_belly:
         print("Tare belly")
     else:
         print("Tare")
-
     calibrating_instrument = (instrument2 if is_belly else instrument)
-    calibrating_instrument.write_register(__CMDREG, __CMD_TARE_SEMI)
+    with _lock:
+        calibrating_instrument.write_register(__CMDREG, __CMD_TARE_SEMI)
     # answerStatus()
-    
+
 def readWeight():
-    global isCalibrating
-    if isCalibrating:
-        return 0
-    weight_modbus = instrument.read_long(__NETREG, byteorder=3)
+    with _lock:
+        if isCalibrating:
+            return 0
+        weight_modbus = instrument.read_long(__NETREG, byteorder=3)
     # print("Weight: ", weight_modbus)
-    return weight_modbus/10
+    return weight_modbus / 10
 
 def readTenstion():
-    global isCalibrating
-    if isCalibrating:
-        return 0
-    belly_tention = instrument2.read_long(__NETREG, byteorder=3)
+    with _lock:
+        if isCalibrating:
+            return 0
+        belly_tention = instrument2.read_long(__NETREG, byteorder=3)
     # print("Tension: ", belly_tention)
-    return belly_tention/10
+    return belly_tention / 10
 
 def physical_calibration():
     print("Zero calibrating : Don't put anything on the checkweigher \n Press Enter to start")
@@ -128,37 +136,39 @@ def physical_calibration():
     # Store a sample weight value and keep previously saved values
     instrument.write_register(__CMDREG, __CMD_SAVENEXT)
 
-def remote_calibration(step, args):
+def setCalibrating(value: bool):
     global isCalibrating
-       # print variable type
-    # print(type(step) , type(args))
-    calibrating_instrument = instrument
+    with _lock:
+        isCalibrating = value
 
-    if(args == "belly"):
+def remote_calibration(step, args):
+    calibrating_instrument = instrument
+    if args == "belly":
         calibrating_instrument = instrument2
 
-    if(step == 1):
-        print("Setting to Zero")
-        # instrument.write_register
+    with _lock:
+        if step == 1:
+            print("Setting to Zero")
+            # instrument.write_register
 
-    elif(step == 2):
-        print("Tare")
-        calibrating_instrument.write_register(__CMDREG, __CMD_CALIB_TARE)
-        # answerStatus()
-    
-    elif(step == 3):
-        print("saving calibration points")
-        sample_weight_h = 0x0000  # High register value (0x0000)
-        sample_weight_l = 0x2710  # Low register value (0x2710)
-        calibrating_instrument.write_registers(__NETCALREG, [sample_weight_h, sample_weight_l])
-        calibrating_instrument.write_register(__CMDREG, __CMD_SAVEFIRST)
-        # answerStatus()
+        elif step == 2:
+            print("Tare")
+            calibrating_instrument.write_register(__CMDREG, __CMD_CALIB_TARE)
+            # answerStatus()
 
-    elif(step == 4):
-        print("bye")
-        isCalibrating = False
+        elif step == 3:
+            print("saving calibration points")
+            sample_weight_h = 0x0000  # High register value (0x0000)
+            sample_weight_l = 0x2710  # Low register value (0x2710)
+            calibrating_instrument.write_registers(__NETCALREG, [sample_weight_h, sample_weight_l])
+            calibrating_instrument.write_register(__CMDREG, __CMD_SAVEFIRST)
+            # answerStatus()
 
-        # answerStatus()
+        elif step == 4:
+            global isCalibrating
+            print("bye")
+            isCalibrating = False
+            # answerStatus()
  
         
     

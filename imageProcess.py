@@ -11,7 +11,8 @@ from threading import Lock, Thread
 # every frame.
 cap = None
 _camera_unavailable = False
-_frame_lock = Lock()
+_frame_lock = Lock()   # protects _latest_frame (camera thread)
+_state_lock = Lock()  # protects captured, captured_data, last_frame, frameReadyCallback
 _latest_frame = None
 _capture_thread = None
 
@@ -178,21 +179,23 @@ def writeZOI(points):
 def handle_capture(callback):
     global captured, frameReadyCallback
     print("capture")
-    frameReadyCallback = callback
-    captured = True
+    with _state_lock:
+        frameReadyCallback = callback
+        captured = True
 
 def getAnalyzedImage():
-    return last_frame
+    with _state_lock:
+        return last_frame
     
 def get_analysis_data():
-    global captured_data
-    return captured_data
+    with _state_lock:
+        return captured_data
 
 def handle_reset():
     global captured, captured_data
-    captured = False
-    # pause_image = False
-    captured_data = None
+    with _state_lock:
+        captured = False
+        captured_data = None
     print("reset")
 
 def updateImage():
@@ -200,7 +203,9 @@ def updateImage():
     frame = get_stream_frame()
     if frame is None:
         return None
-    if captured:
+    with _state_lock:
+        _should_capture = captured
+    if _should_capture:
         print("Capturing image")
         
         # Optimización: Validación temprana de dimensiones para evitar procesamiento innecesario
@@ -386,15 +391,19 @@ def updateImage():
         last_frame = im
         
         # Optimización: Usar json.dumps en lugar de concatenación de strings
-        captured_data = json.dumps({
+        _new_data = json.dumps({
             "length": round(bodyLength_mm, 1),
             "height": round(bodyDiameter * coef_calibration, 1),
             "head": abs(round(headLength * coef_calibration, 1)),
             "tail_trigger": round(Tail_Trigger_Diameter * coef_calibration, 1)
         })
 
-        captured = False
-        frameReadyCallback()
+        with _state_lock:
+            last_frame = im
+            captured_data = _new_data
+            captured = False
+            _callback = frameReadyCallback
+        _callback()
         return frame
 
     else:
