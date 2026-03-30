@@ -128,7 +128,7 @@ def get_analysis_data(data=None):
 def _run_analysis_in_tpool():
     """Greenlet that offloads the CPU-intensive OpenCV analysis to a real OS
     thread via eventlet.tpool so the eventlet IO loop is never blocked."""
-    import eventlet
+    import eventlet.tpool
     try:
         eventlet.tpool.execute(imageProcess.run_analysis)
         logEvent(etapa="CAPTURE", status="SUCCESS",
