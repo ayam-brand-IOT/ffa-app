@@ -6,7 +6,6 @@ import IO_map as io_map
 
 pin_factory = LGPIOFactory()
 
-
 # Initialize laser and flash as LEDs
 laser = LED(io_map.__LASER_PIN, pin_factory=pin_factory)
 flash = LED(io_map.__FLASH_PIN, pin_factory=pin_factory)

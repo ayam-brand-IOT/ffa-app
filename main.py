@@ -2,17 +2,17 @@
 # It replaces Python's stdlib (socket, threading, time, etc.) with
 # eventlet-compatible greenlet versions.  Doing this after any import
 # that touches those modules is too late and causes subtle bugs.
+import hardware
+from hardware import DEV_MODE
 import eventlet
 eventlet.monkey_patch()
 
 # hardware must be imported first so that net/ios are available before
 # sockets.py and routes.py are loaded.
-import hardware  # noqa: F401 - side-effect import (sets up net/ios)
 import sockets   # noqa: F401 - registers all SocketIO handlers
 import routes    # noqa: F401 - registers all HTTP routes
 
 from app import app, socketio
-from hardware import DEV_MODE
 from logger import logEvent
 
 
