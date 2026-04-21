@@ -1,170 +1,179 @@
-
 # ffa-app
 
-**ffa-app** is the Python-based core component of the **Frozen Fish Analysis (FFA)** system. It is responsible for managing hardware interactions on the Raspberry Pi, communicating with the `ffa-server`, and serving the compiled UI for user interaction.
+Servicio Python que opera la parte local del sistema FFA: hardware, vision, video en vivo, configuracion de parametros y WebSocket hacia la interfaz.
 
-## Overview
+## Responsabilidades
 
-### Key Functionalities:
+- leer peso desde el transmisor o desde emuladores
+- controlar flash y laser via GPIO o emuladores
+- capturar imagen y ejecutar analisis con OpenCV
+- exponer video en vivo y la ultima imagen analizada
+- servir la SPA compilada del frontend cuando existe `dist/`
+- publicar datos en tiempo real por Socket.IO
 
-- **RS-485**: Reads fish weight through serial communication.
-- **Webcam**: Captures images of the fish.
-- **GPIO Control**: Turns on/off flash and laser via digital IOs.
-- **WebSocket Communication**: Interfaces with the UI and `ffa-server`.
-- **Web Hosting**: Serves the pre-built Vue.js UI as a local website.
+`ffa-app` escucha en `http://localhost:3030`.
 
-### Role in the System:
-- Acts as the intermediary between **hardware**, the **user interface (UI)**, and the **ffa-server** for data storage and processing.
+## Archivos principales
 
-## Architecture
-
-```
-      ┌──────────┐       ┌─────────────┐
-      │ RS-485    │       │ Webcam       │
-      │ (Weight)  │       │ (Image)      │
-      └─────┬─────┘       └───────┬─────┘
-            │                      │
-            │       ┌───────┐      │
-            │       │ ffa-   │      │
-            │       │ app    │      │
-            │       └───┬───┘      │
-            │           │           │
-          ┌─┴─┐       ┌─┴─┐       │
-          │UI │<------>│WS │<---->│
-          └───┘        └───┘       │
-            │                       │
-            │                     ┌─┴─┐
-            │                     │ffa-│
-            │                     │server
-            │                     └────┘
+```text
+ffa-app/
+├── main.py
+├── app.py
+├── routes.py
+├── sockets.py
+├── hardware.py
+├── imageProcess.py
+├── vision_config.json
+├── requirements.txt
+├── Dockerfile
+├── dist/
+└── services/
+    └── config_service.py
 ```
 
-## Requirements
+## Modos de operacion
 
-- **Raspberry Pi** running Linux (Raspberry Pi OS).
-- **Python 3.11**.
+`hardware.py` selecciona el backend segun `DEV_MODE`:
 
-## Installation
+- `DEV_MODE=true`: usa `TLB_MODBUS_dev.py` e `IOs_dev.py`
+- `DEV_MODE=false`: usa `TLB_MODBUS.py` e `IOs.py`
 
-### Using Pipenv
+Si no se define la variable, el valor por defecto del codigo es `true`.
 
-1. **Install Pipenv** (if not already installed):
-   ```bash
-   pip install pipenv
-   ```
+## Instalacion local
 
-2. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/ayam-brand-IOT/ffa-app.git
-   cd ffa-app
-   ```
+```bash
+cd ffa-app
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
 
-3. **Install Dependencies** using Pipenv:
-   ```bash
-   pipenv install
-   ```
+## Variables de entorno relevantes
 
-4. **Build and Add the UI**:
+El codigo consulta principalmente:
 
-   The **UI** must be built from the `ffa-view` repository before running `ffa-app`. Follow these steps:
+- `DEV_MODE`
 
-   1. Clone the `ffa-view` repository:
-      ```bash
-      git clone https://github.com/ayam-brand-IOT/ffa-view
-      cd ffa-view
-      ```
+El `docker-compose` tambien define:
 
-   2. Build the UI using npm:
-      ```bash
-      npm install
-      npm run build
-      ```
+- `RS485_PORT`
+- `WEBCAM_DEVICE`
+- `FLASH_PIN`
+- `LASER_PIN`
+- `UI_PORT`
 
-   3. Copy the contents of the `dist` folder to the `ffa-app` UI directory:
-      ```bash
-      cp -r dist/* /path/to/ffa-app/ui
-      ```
+Estas variables dependen de la implementacion concreta de los modulos de hardware.
 
-5. **Activate the Virtual Environment**:
-   ```bash
-   pipenv shell
-   ```
+## Arranque
 
-6. **Set Up Environment Variables**:  
-   Create a `.env` file for configurations:
-   ```
-   RS485_PORT=/dev/ttyUSB0
-   WEBCAM_DEVICE=/dev/video0
-   FLASH_PIN=23
-   LASER_PIN=22
-   ```
+### Desarrollo sin hardware
 
-7. **Run the Application**:
-   ```bash
-   python main.py
-   ```
+```bash
+DEV_MODE=true python main.py
+```
 
-The UI will be available at `http://<raspberry_ip>:8000`.
+### Produccion con hardware real
 
-## Logs and Debugging
+```bash
+DEV_MODE=false python main.py
+```
 
-- **View Service Logs**:
-   ```bash
-   journalctl -u ffa-app.service -f
-   ```
+El servicio arranca con Eventlet y expone Flask + Socket.IO en `0.0.0.0:3030`.
 
-## Dependency List (Pipfile)
+## Integracion con la interfaz
 
-Below are the main production dependencies:
+- en desarrollo, normalmente la UI corre aparte con `npm run serve`
+- en despliegue, `app.py` sirve archivos desde:
+  - `./dist/index.html`
+  - `./dist/static/`
 
-- **GPIO Libraries**:
-  - `gpiozero==2.0`
-  - `pigpio==1.78`
-  - `lgpio==0.2.2.0`
+Nota importante: el repo actual solo trae `ffa-app/dist/.gitkeep`. Para servir la UI desde `ffa-app`, primero hay que compilar `user-interface` y copiar su salida dentro de `ffa-app/dist/`.
 
-- **Web Framework**:
-  - `flask==1.1.2`
-  - `flask-cors==3.0.10`
-  - `flask-socketio==5.3.4`
+## Endpoints HTTP
 
-- **Serial Communication**:
-  - `minimalmodbus==2.0.1`
-  - `pyserial==3.5`
+| Metodo | Ruta | Descripcion |
+| --- | --- | --- |
+| `GET` | `/` y `/<path>` | Catch-all para servir la SPA |
+| `GET` | `/video_feed` | Stream MJPEG de la camara |
+| `GET` | `/analyzed_image` | Ultima imagen analizada como JPEG simple |
+| `POST` | `/length_calibration` | Guarda la relacion px/mm |
+| `POST` | `/calibrate_zoi` | Guarda la zona de interes |
+| `GET` | `/get_config` | Regresa `vision_config.json` |
+| `POST` | `/update_config` | Actualiza `tailTrigger` o parametros por especie/tipo |
+| `POST` | `/update_fish_params` | Aplica a runtime los parametros de una especie/tipo |
 
-- **Image Processing**:
-  - `opencv-python==4.9.0.80`
+## Eventos Socket.IO
 
-- **Utilities**:
-  - `numpy==1.26.4`
-  - `simple-websocket==1.0.0`
-  - `bidict==0.23.1`
+### Eventos recibidos desde la UI
 
-## Updating the Application
+- `calibrate_load_cell`
+- `resume_net_update`
+- `enter_to_tension_test`
+- `enter_to_weight_mode`
+- `set_zero`
+- `set_tare`
+- `update_net`
+- `get_tension`
+- `get_analysis_data`
+- `capture`
+- `reset`
+- `reset_defects`
+- `laser`
+- `set_fish_data`
 
-1. **Pull Latest Changes**:
-   ```bash
-   git pull origin main
-   ```
+### Eventos emitidos hacia la UI
 
-2. **Rebuild the UI** (if the `ffa-view` code has changed):
-   ```bash
-   cd /path/to/ffa-view
-   npm install
-   npm run build
-   cp -r dist/* /path/to/ffa-app/ui
-   ```
+- `weight_update`
+- `tension_update`
+- `frame_ready`
+- `analysis_data`
+- `calibration_step_commited`
+- `calibration_error`
 
-3. **Restart the Service**:
-   ```bash
-   sudo systemctl restart ffa-app.service
-   ```
+## Configuracion de vision
 
-## Contribution Guidelines
+`vision_config.json` persiste:
 
-1. Fork the repository.
-2. Open a pull request with detailed descriptions of your changes.
-3. Follow PEP8 coding standards.
+- `zoi`
+- `species_params`
+- `ppmm`
+- `tailTrigger`
+- `current_fish_params`
 
-## License
+`services/config_service.py` es la capa que lee, valida y escribe ese archivo.
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+## Dependencias principales
+
+- Flask 2.3
+- Flask-SocketIO 5.3
+- Eventlet
+- OpenCV
+- NumPy
+- minimalmodbus
+- pyserial
+- gpiozero
+- pigpio
+- lgpio
+
+Consulta la lista exacta en [requirements.txt](./requirements.txt).
+
+## Docker
+
+```bash
+docker build -t ffa-app ./ffa-app
+docker run -p 3030:3030 -e DEV_MODE=true ffa-app
+```
+
+El compose del repo raiz esta pensado para correrlo junto con `ffa-server`.
+
+## Logs y documentacion adicional
+
+Este modulo incluye documentacion especifica del subsistema de logs:
+
+- [LOGGING_README.md](./LOGGING_README.md)
+- [LOGGING_QUICKSTART.md](./LOGGING_QUICKSTART.md)
+- [LOGGING_STANDARD.md](./LOGGING_STANDARD.md)
+- [LOGGING_IMPLEMENTATION.md](./LOGGING_IMPLEMENTATION.md)
+- [LOGGING_IMPLEMENTATION_SUMMARY.md](./LOGGING_IMPLEMENTATION_SUMMARY.md)
+- [PERFORMANCE_OPTIMIZATIONS.md](./PERFORMANCE_OPTIMIZATIONS.md)
