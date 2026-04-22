@@ -284,7 +284,7 @@ Ejecutar suite de tests:
 
 ```bash
 cd ffa-app
-python test_log_validation.py
+python tests/test_log_validation.py
 ```
 
 **Tests incluidos:**
@@ -390,7 +390,7 @@ Si necesitas agregar nuevo vocabulario:
 
 3. **Ejecutar tests:**
    ```bash
-   python test_log_validation.py
+   python tests/test_log_validation.py
    ```
 
 4. **Actualizar esta documentación**

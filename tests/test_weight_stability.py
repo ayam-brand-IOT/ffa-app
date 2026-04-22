@@ -7,6 +7,8 @@ Verifica que el peso se mantiene estable durante 1.2s
 import sys
 import time
 
+import _bootstrap  # noqa: F401 - adds project root to sys.path
+
 # Importar el emulador
 import TLB_MODBUS_dev as net
 

@@ -14,18 +14,18 @@ ffa-app/logs/ffa_app_events.log
 
 ```bash
 # Ver últimos logs + estadísticas
-python view_logs.py
+python tools/logging/view_logs.py
 
 # Ver solo errores
-python view_logs.py errors
+python tools/logging/view_logs.py errors
 
 # Ver estadísticas completas
-python view_logs.py stats
+python tools/logging/view_logs.py stats
 
 # Ver eventos específicos
-python view_logs.py capture      # Capturas
-python view_logs.py config       # Configuración
-python view_logs.py calibration  # Calibraciones
+python tools/logging/view_logs.py capture      # Capturas
+python tools/logging/view_logs.py config       # Configuración
+python tools/logging/view_logs.py calibration  # Calibraciones
 ```
 
 ## 📊 Estructura del log
@@ -78,15 +78,15 @@ logEvent(
 
 ```bash
 # Generar logs de prueba
-python test_logging.py
+python tests/test_logging.py
 
 # Ver los resultados
-python view_logs.py
+python tools/logging/view_logs.py
 ```
 
 ## 📖 Documentación completa
 
-Ver [LOGGING_README.md](./LOGGING_README.md) para documentación detallada.
+Ver [README.md](./README.md) para documentación detallada.
 
 ---
 

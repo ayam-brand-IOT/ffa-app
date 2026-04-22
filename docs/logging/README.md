@@ -196,25 +196,25 @@ Se incluye un script `view_logs.py` para analizar los logs:
 
 ```bash
 # Ver últimos 50 logs + estadísticas
-python view_logs.py
+python tools/logging/view_logs.py
 
 # Ver todos los logs
-python view_logs.py all
+python tools/logging/view_logs.py all
 
 # Ver solo estadísticas
-python view_logs.py stats
+python tools/logging/view_logs.py stats
 
 # Ver solo errores
-python view_logs.py errors
+python tools/logging/view_logs.py errors
 
 # Ver solo eventos exitosos
-python view_logs.py success
+python tools/logging/view_logs.py success
 
 # Filtrar por etapa
-python view_logs.py capture      # Solo capturas
-python view_logs.py config       # Solo configuración
-python view_logs.py calibration  # Solo calibraciones
-python view_logs.py system       # Solo eventos del sistema
+python tools/logging/view_logs.py capture      # Solo capturas
+python tools/logging/view_logs.py config       # Solo configuración
+python tools/logging/view_logs.py calibration  # Solo calibraciones
+python tools/logging/view_logs.py system       # Solo eventos del sistema
 ```
 
 ### Salida de ejemplo

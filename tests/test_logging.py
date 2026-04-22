@@ -4,6 +4,8 @@ Script de prueba para el sistema de logging
 Genera eventos de ejemplo para verificar que todo funciona correctamente
 """
 
+import _bootstrap  # noqa: F401 - adds project root to sys.path
+
 from logger import logEvent, get_logger
 
 def test_logging():
@@ -124,9 +126,9 @@ def test_logging():
     print("✅ Log de evento de sistema generado")
     
     print("\n✨ ¡Test completado! Ahora puedes ver los logs con:")
-    print("   python view_logs.py")
-    print("   python view_logs.py stats")
-    print("   python view_logs.py errors")
+    print("   python tools/logging/view_logs.py")
+    print("   python tools/logging/view_logs.py stats")
+    print("   python tools/logging/view_logs.py errors")
 
 
 if __name__ == '__main__':

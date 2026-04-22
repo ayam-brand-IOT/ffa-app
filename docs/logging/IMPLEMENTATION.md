@@ -15,8 +15,8 @@
 6. **`test_logging.py`** - Script de prueba
 
 #### Documentación:
-7. **`LOGGING_README.md`** - Documentación completa
-8. **`LOGGING_QUICKSTART.md`** - Guía rápida de uso
+7. **`README.md`** - Documentación completa
+8. **`QUICKSTART.md`** - Guía rápida de uso
 
 #### Integración:
 9. **`main.py`** - Integrado con logging en todas las funciones clave
@@ -42,22 +42,22 @@
 
 ```bash
 # Ver últimos logs + estadísticas
-python view_logs.py
+python tools/logging/view_logs.py
 
 # Ver solo errores
-python view_logs.py errors
+python tools/logging/view_logs.py errors
 
 # Ver estadísticas completas
-python view_logs.py stats
+python tools/logging/view_logs.py stats
 
 # Monitor en tiempo real
-python monitor_logs.py
+python tools/logging/monitor_logs.py
 
 # Monitor solo de errores
-python monitor_logs.py errors
+python tools/logging/monitor_logs.py errors
 
 # Generar logs de prueba
-python test_logging.py
+python tests/test_logging.py
 ```
 
 ---
@@ -243,13 +243,13 @@ logEvent(
 
 ```bash
 # Ver logs en tiempo real con colores
-python monitor_logs.py
+python tools/logging/monitor_logs.py
 
 # Analizar solo errores
-python view_logs.py errors
+python tools/logging/view_logs.py errors
 
 # Ver estadísticas completas
-python view_logs.py stats
+python tools/logging/view_logs.py stats
 
 # Tail directo al archivo
 tail -f logs/ffa_app_events.log
@@ -262,8 +262,8 @@ tail -f logs/ffa_app_events.log | jq .
 
 ## 📚 Documentación:
 
-- **LOGGING_QUICKSTART.md** - Guía rápida (2 min)
-- **LOGGING_README.md** - Documentación completa (10 min)
+- **QUICKSTART.md** - Guía rápida (2 min)
+- **README.md** - Documentación completa (10 min)
 
 ---
 

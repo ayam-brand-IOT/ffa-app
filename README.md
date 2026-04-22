@@ -27,6 +27,9 @@ ffa-app/
 ├── requirements.txt
 ├── Dockerfile
 ├── dist/
+├── docs/
+├── tests/
+├── tools/
 └── services/
     └── config_service.py
 ```
@@ -171,9 +174,9 @@ El compose del repo raiz esta pensado para correrlo junto con `ffa-server`.
 
 Este modulo incluye documentacion especifica del subsistema de logs:
 
-- [LOGGING_README.md](./LOGGING_README.md)
-- [LOGGING_QUICKSTART.md](./LOGGING_QUICKSTART.md)
-- [LOGGING_STANDARD.md](./LOGGING_STANDARD.md)
-- [LOGGING_IMPLEMENTATION.md](./LOGGING_IMPLEMENTATION.md)
-- [LOGGING_IMPLEMENTATION_SUMMARY.md](./LOGGING_IMPLEMENTATION_SUMMARY.md)
-- [PERFORMANCE_OPTIMIZATIONS.md](./PERFORMANCE_OPTIMIZATIONS.md)
+- [Logging README](./docs/logging/README.md)
+- [Logging Quickstart](./docs/logging/QUICKSTART.md)
+- [Logging Standard](./docs/logging/STANDARD.md)
+- [Logging Implementation](./docs/logging/IMPLEMENTATION.md)
+- [Logging Implementation Summary](./docs/logging/IMPLEMENTATION_SUMMARY.md)
+- [Performance Optimizations](./docs/performance/OPTIMIZATIONS.md)

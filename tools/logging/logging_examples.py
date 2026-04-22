@@ -3,6 +3,13 @@
 Ejemplos avanzados de uso del sistema de logging
 """
 
+import sys
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from logger import logEvent, get_logger
 
 def ejemplo_basico():
@@ -371,8 +378,8 @@ def main():
     print("✨ ¡Todos los ejemplos ejecutados!")
     print("=" * 60)
     print("\n📊 Ahora puedes ver los logs con:")
-    print("   python view_logs.py")
-    print("   python monitor_logs.py history")
+    print("   python tools/logging/view_logs.py")
+    print("   python tools/logging/monitor_logs.py history")
     print()
 
 

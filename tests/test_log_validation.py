@@ -5,6 +5,9 @@ Verifica que las constantes y validaciones funcionen correctamente
 """
 
 import sys
+
+import _bootstrap  # noqa: F401 - adds project root to sys.path
+
 from log_constants import *
 from logger import logEvent, LogValidationError
 

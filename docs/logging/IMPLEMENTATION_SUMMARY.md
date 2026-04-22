@@ -57,7 +57,7 @@ Suite completa de tests para validación.
 
 **Resultado:** 🎉 **7/7 tests PASADOS**
 
-### 4. **LOGGING_STANDARD.md**
+### 4. **STANDARD.md**
 Documentación completa del estándar de logging.
 
 **Secciones:**
@@ -187,7 +187,7 @@ VOCABULARY_VERSION = "1.0.0"
 ### Ejecutar tests
 ```bash
 cd ffa-app
-python test_log_validation.py
+python tests/test_log_validation.py
 ```
 
 ### Ver logs en tiempo real

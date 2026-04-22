@@ -7,6 +7,8 @@ Verifica que todas las funciones del emulador GPIO funcionen correctamente
 import sys
 import time
 
+import _bootstrap  # noqa: F401 - adds project root to sys.path
+
 # Importar el emulador
 import IOs_dev as ios
 

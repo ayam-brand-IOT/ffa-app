@@ -9,7 +9,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-LOGS_DIR = Path(__file__).parent / "logs"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+LOGS_DIR = ROOT_DIR / "logs"
 LOG_FILE = LOGS_DIR / "ffa_app_events.log"
 
 
@@ -204,15 +205,15 @@ def main():
         print("""
 🔍 Uso del script de visualización de logs:
 
-    python view_logs.py               # Últimos 50 logs + estadísticas
-    python view_logs.py all           # Todos los logs
-    python view_logs.py stats         # Solo estadísticas
-    python view_logs.py errors        # Solo errores
-    python view_logs.py success       # Solo eventos exitosos
-    python view_logs.py capture       # Solo eventos de captura
-    python view_logs.py config        # Solo eventos de configuración
-    python view_logs.py calibration   # Solo eventos de calibración
-    python view_logs.py system        # Solo eventos del sistema
+    python tools/logging/view_logs.py               # Últimos 50 logs + estadísticas
+    python tools/logging/view_logs.py all           # Todos los logs
+    python tools/logging/view_logs.py stats         # Solo estadísticas
+    python tools/logging/view_logs.py errors        # Solo errores
+    python tools/logging/view_logs.py success       # Solo eventos exitosos
+    python tools/logging/view_logs.py capture       # Solo eventos de captura
+    python tools/logging/view_logs.py config        # Solo eventos de configuración
+    python tools/logging/view_logs.py calibration   # Solo eventos de calibración
+    python tools/logging/view_logs.py system        # Solo eventos del sistema
         """)
 
 

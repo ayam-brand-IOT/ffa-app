@@ -10,7 +10,8 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-LOGS_DIR = Path(__file__).parent / "logs"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+LOGS_DIR = ROOT_DIR / "logs"
 LOG_FILE = LOGS_DIR / "ffa_app_events.log"
 
 # Colores ANSI
@@ -156,21 +157,21 @@ def main():
 🔍 Monitor de logs en tiempo real
 
 Uso:
-    python monitor_logs.py              # Monitor en tiempo real (compacto)
-    python monitor_logs.py history      # Ver historial sin seguir
-    python monitor_logs.py errors       # Solo errores en tiempo real
-    python monitor_logs.py success      # Solo eventos exitosos
-    python monitor_logs.py detailed     # Formato detallado (JSON completo)
+    python tools/logging/monitor_logs.py              # Monitor en tiempo real (compacto)
+    python tools/logging/monitor_logs.py history      # Ver historial sin seguir
+    python tools/logging/monitor_logs.py errors       # Solo errores en tiempo real
+    python tools/logging/monitor_logs.py success      # Solo eventos exitosos
+    python tools/logging/monitor_logs.py detailed     # Formato detallado (JSON completo)
 
 Ejemplos:
     # Monitor básico
-    python monitor_logs.py
+    python tools/logging/monitor_logs.py
     
     # Ver solo errores conforme ocurren
-    python monitor_logs.py errors
+    python tools/logging/monitor_logs.py errors
     
     # Ver historial completo
-    python monitor_logs.py history
+    python tools/logging/monitor_logs.py history
 
 💡 Presiona Ctrl+C para detener el monitor
         """)

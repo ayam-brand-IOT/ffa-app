@@ -25,9 +25,9 @@ ffa-app/
 │   └── logging_examples.py          (9.9 KB) - Ejemplos avanzados
 │
 ├── 📚 DOCUMENTACIÓN
-│   ├── LOGGING_IMPLEMENTATION.md    (6.7 KB) - Resumen de implementación
-│   ├── LOGGING_QUICKSTART.md        (2.0 KB) - Guía rápida
-│   └── LOGGING_README.md            (9.2 KB) - Documentación completa
+│   ├── IMPLEMENTATION.md    (6.7 KB) - Resumen de implementación
+│   ├── QUICKSTART.md        (2.0 KB) - Guía rápida
+│   └── README.md            (9.2 KB) - Documentación completa
 │
 └── 🔗 INTEGRACIÓN
     └── main.py                      (Modificado) - Integrado con logging
@@ -77,14 +77,14 @@ ffa-app/
 ║                          VISUALIZACIÓN                                 ║
 ╠════════════════════════════════════════════════════════════════════════╣
 ║                                                                        ║
-║  📊 python view_logs.py              → Últimos 50 + estadísticas      ║
-║  📈 python view_logs.py stats        → Solo estadísticas              ║
-║  ❌ python view_logs.py errors       → Solo errores                   ║
-║  ✅ python view_logs.py success      → Solo éxitos                    ║
-║  📸 python view_logs.py capture      → Solo capturas                  ║
-║  ⚙️  python view_logs.py config       → Solo configuración            ║
-║  🎯 python view_logs.py calibration  → Solo calibraciones             ║
-║  📋 python view_logs.py all          → Todos los logs                 ║
+║  📊 python tools/logging/view_logs.py              → Últimos 50 + estadísticas      ║
+║  📈 python tools/logging/view_logs.py stats        → Solo estadísticas              ║
+║  ❌ python tools/logging/view_logs.py errors       → Solo errores                   ║
+║  ✅ python tools/logging/view_logs.py success      → Solo éxitos                    ║
+║  📸 python tools/logging/view_logs.py capture      → Solo capturas                  ║
+║  ⚙️  python tools/logging/view_logs.py config       → Solo configuración            ║
+║  🎯 python tools/logging/view_logs.py calibration  → Solo calibraciones             ║
+║  📋 python tools/logging/view_logs.py all          → Todos los logs                 ║
 ║                                                                        ║
 ╚════════════════════════════════════════════════════════════════════════╝
 
@@ -92,11 +92,11 @@ ffa-app/
 ║                        MONITOR EN TIEMPO REAL                          ║
 ╠════════════════════════════════════════════════════════════════════════╣
 ║                                                                        ║
-║  🔴 python monitor_logs.py           → Monitor en tiempo real         ║
-║  ❌ python monitor_logs.py errors    → Solo errores en vivo           ║
-║  ✅ python monitor_logs.py success   → Solo éxitos en vivo            ║
-║  📜 python monitor_logs.py history   → Ver historial                  ║
-║  📝 python monitor_logs.py detailed  → Formato JSON completo          ║
+║  🔴 python tools/logging/monitor_logs.py           → Monitor en tiempo real         ║
+║  ❌ python tools/logging/monitor_logs.py errors    → Solo errores en vivo           ║
+║  ✅ python tools/logging/monitor_logs.py success   → Solo éxitos en vivo            ║
+║  📜 python tools/logging/monitor_logs.py history   → Ver historial                  ║
+║  📝 python tools/logging/monitor_logs.py detailed  → Formato JSON completo          ║
 ║                                                                        ║
 ╚════════════════════════════════════════════════════════════════════════╝
 
@@ -104,8 +104,8 @@ ffa-app/
 ║                             PRUEBAS                                    ║
 ╠════════════════════════════════════════════════════════════════════════╣
 ║                                                                        ║
-║  🧪 python test_logging.py           → Tests básicos                  ║
-║  📚 python logging_examples.py       → Ejemplos avanzados             ║
+║  🧪 python tests/test_logging.py           → Tests básicos                  ║
+║  📚 python tools/logging/logging_examples.py       → Ejemplos avanzados             ║
 ║                                                                        ║
 ╚════════════════════════════════════════════════════════════════════════╝
 
@@ -234,9 +234,9 @@ ffa-app/
 │                        📚 DOCUMENTACIÓN DISPONIBLE                        │
 └───────────────────────────────────────────────────────────────────────────┘
 
-  📄 LOGGING_QUICKSTART.md      → Guía rápida (2 minutos)
-  📖 LOGGING_README.md           → Documentación completa (10 minutos)
-  📝 LOGGING_IMPLEMENTATION.md  → Resumen de implementación
+  📄 QUICKSTART.md      → Guía rápida (2 minutos)
+  📖 README.md           → Documentación completa (10 minutos)
+  📝 IMPLEMENTATION.md  → Resumen de implementación
 
 
 ╔═══════════════════════════════════════════════════════════════════════════╗

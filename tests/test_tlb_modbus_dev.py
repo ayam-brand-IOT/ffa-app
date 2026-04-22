@@ -7,6 +7,8 @@ Verifica que todas las funciones del emulador funcionen correctamente
 import sys
 import time
 
+import _bootstrap  # noqa: F401 - adds project root to sys.path
+
 # Importar el emulador
 import TLB_MODBUS_dev as net
 
