@@ -66,6 +66,12 @@ El `docker-compose` tambien define:
 - `LASER_PIN`
 - `UI_PORT`
 
+La captura sincronizada con flash acepta estos ajustes opcionales:
+
+- `FLASH_SETTLE_SECONDS`: pausa corta despues de encender el flash. Valor por defecto: `0.03`
+- `FLASH_FRAME_SKIP`: cantidad de frames nuevos que espera despues de encender el flash. Valor por defecto: `2`
+- `FLASH_FRAME_TIMEOUT`: timeout maximo para esperar frames frescos. Valor por defecto: `0.35`
+
 Estas variables dependen de la implementacion concreta de los modulos de hardware.
 
 ## Arranque
@@ -180,3 +186,4 @@ Este modulo incluye documentacion especifica del subsistema de logs:
 - [Logging Implementation](./docs/logging/IMPLEMENTATION.md)
 - [Logging Implementation Summary](./docs/logging/IMPLEMENTATION_SUMMARY.md)
 - [Performance Optimizations](./docs/performance/OPTIMIZATIONS.md)
+- [Flash Capture Tuning](./docs/FLASH_CAPTURE_TUNING.md)

@@ -6,7 +6,7 @@ Imports app/socketio from app.py and hardware from hardware.py.
 """
 
 import json
-import time
+import os
 import imageProcess
 from flask_socketio import emit
 
@@ -14,6 +14,11 @@ from app import socketio, thread_lock
 from hardware import net, ios
 from logger import logEvent
 from services.config_service import update_fish_params
+
+
+FLASH_SETTLE_SECONDS = float(os.getenv("FLASH_SETTLE_SECONDS", "0.03"))
+FLASH_FRAME_SKIP = int(os.getenv("FLASH_FRAME_SKIP", "2"))
+FLASH_FRAME_TIMEOUT = float(os.getenv("FLASH_FRAME_TIMEOUT", "0.35"))
 
 
 # ─────────────────────────── background helpers ───────────────────────────
@@ -146,22 +151,64 @@ def _run_analysis_in_tpool():
         print(f"Error en análisis: {e}")
 
 
-@socketio.event
-def capture(data=None):
+def _capture_with_synced_flash():
+    """Synchronize flash and capture against actual camera frames.
+
+    Old flow used a fixed sleep after turning the flash on. This waits for
+    fresh frames that are known to arrive after the flash trigger, which cuts
+    latency and makes timing tunable by frame count instead of guesswork.
+    """
+    flash_started = False
     try:
-        ios.timered_flash()
-        time.sleep(1)
         print("capturing")
         logEvent(etapa="CAPTURE", status="INFO",
-                 additional_data={"action": "capture_started"})
-        # Snapshot frame and store callback immediately (fast)
-        imageProcess.handle_capture(frame_is_ready)
-        # Dispatch heavy analysis to a real OS thread; returns immediately
+                 additional_data={
+                     "action": "capture_started",
+                     "flash_sync": {
+                         "settle_seconds": FLASH_SETTLE_SECONDS,
+                         "frame_skip": FLASH_FRAME_SKIP,
+                         "timeout": FLASH_FRAME_TIMEOUT,
+                     },
+                 })
+
+        with thread_lock:
+            frame_marker = imageProcess.get_frame_marker()
+            ios.set_laser(False)
+            ios.set_flash(True)
+            flash_started = True
+
+        if FLASH_SETTLE_SECONDS > 0:
+            socketio.sleep(FLASH_SETTLE_SECONDS)
+
+        frame = imageProcess.wait_for_frame_since(
+            frame_marker["seq"],
+            skip_frames=FLASH_FRAME_SKIP,
+            timeout=FLASH_FRAME_TIMEOUT,
+        )
+
+        with thread_lock:
+            ios.set_flash(False)
+            ios.set_laser(True)
+            flash_started = False
+
+        imageProcess.handle_capture(frame_is_ready, frame=frame)
         socketio.start_background_task(_run_analysis_in_tpool)
     except Exception as e:
+        if flash_started:
+            try:
+                with thread_lock:
+                    ios.set_flash(False)
+                    ios.set_laser(True)
+            except Exception:
+                pass
         logEvent(etapa="CAPTURE", status="ERROR",
                  error_code="CAPTURE_ERROR", error_msg=str(e))
         print(f"Error en captura: {e}")
+
+
+@socketio.event
+def capture(data=None):
+    socketio.start_background_task(_capture_with_synced_flash)
 
 
 @socketio.event

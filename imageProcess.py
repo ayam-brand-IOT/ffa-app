@@ -21,6 +21,8 @@ _camera_unavailable = False
 _frame_lock = _native_threading.Lock()   # protects _latest_frame (camera thread)
 _state_lock = _native_threading.Lock()  # protects captured, captured_data, last_frame, frameReadyCallback
 _latest_frame = None
+_latest_frame_seq = 0
+_latest_frame_time = 0.0
 _pending_frame = None  # frame snapshotted at capture time, consumed by run_analysis()
 _capture_thread = None
 
@@ -49,7 +51,7 @@ def _open_camera():
 
 def _capture_loop():
     """Background thread that continuously grabs frames from the camera."""
-    global _latest_frame
+    global _latest_frame, _latest_frame_seq, _latest_frame_time
     while True:
         if not _open_camera():
             time.sleep(0.5)
@@ -61,6 +63,8 @@ def _capture_loop():
         frame = cv2.resize(frame, (1000, 650))
         with _frame_lock:
             _latest_frame = frame
+            _latest_frame_seq += 1
+            _latest_frame_time = time.monotonic()
         time.sleep(0.03)
 
 
@@ -74,6 +78,46 @@ def get_stream_frame():
         if _latest_frame is None:
             return None
         return _latest_frame.copy()
+
+
+def get_frame_marker():
+    """Return the latest frame sequence/time.
+
+    Capture synchronization uses this marker before turning the flash on, then
+    waits for one or more newer camera frames instead of sleeping a fixed time.
+    """
+    get_stream_frame()
+    with _frame_lock:
+        return {
+            "seq": _latest_frame_seq,
+            "time": _latest_frame_time,
+            "has_frame": _latest_frame is not None,
+        }
+
+
+def wait_for_frame_since(seq, skip_frames=1, timeout=0.35):
+    """Wait for a fresh frame captured after `seq`.
+
+    Args:
+        seq: Frame sequence observed before the external trigger.
+        skip_frames: Number of new frames to wait for after the trigger. Some
+            cameras need one extra frame for exposure/illumination to settle.
+        timeout: Maximum wait in seconds before falling back to the latest frame.
+
+    Returns:
+        A copy of the fresh frame, or the latest available frame on timeout.
+    """
+    target_seq = seq + max(1, int(skip_frames))
+    deadline = time.monotonic() + timeout
+    get_stream_frame()
+
+    while time.monotonic() < deadline:
+        with _frame_lock:
+            if _latest_frame is not None and _latest_frame_seq >= target_seq:
+                return _latest_frame.copy()
+        time.sleep(0.005)
+
+    return get_stream_frame()
 
 __RATIO__ = 16/9
 __CAMERA_WIDTH__ = 550
@@ -184,14 +228,16 @@ def writeZOI(points):
     except Exception as e:
         print(f"Error writting ZOI: {e}")
 
-def handle_capture(callback):
+def handle_capture(callback, frame=None):
     """Snapshot the current frame and store callback. Analysis is triggered
     separately via run_analysis() in a real OS thread."""
     global _pending_frame, frameReadyCallback
     print("capture")
     with _state_lock:
         frameReadyCallback = callback
-        _pending_frame = get_stream_frame()  # snapshot BEFORE returning to caller
+        # Snapshot BEFORE returning to caller. When capture is synchronized with
+        # flash, the caller can pass the exact fresh frame selected after flash.
+        _pending_frame = frame.copy() if frame is not None else get_stream_frame()
 
 def getAnalyzedImage():
     with _state_lock:
