@@ -20,6 +20,13 @@ FLASH_SETTLE_SECONDS = float(os.getenv("FLASH_SETTLE_SECONDS", "0.03"))
 FLASH_FRAME_SKIP = int(os.getenv("FLASH_FRAME_SKIP", "2"))
 FLASH_FRAME_TIMEOUT = float(os.getenv("FLASH_FRAME_TIMEOUT", "0.35"))
 
+# Scale polling.  At 9600 baud 8N2 a read_registers round trip costs ~20 ms of
+# line time plus the instrument's own response delay, so the old 25 ms tension
+# period was asking for more than the bus can deliver and produced timeouts.
+WEIGHT_POLL_INTERVAL = float(os.getenv("WEIGHT_POLL_INTERVAL", "0.25"))
+TENSION_POLL_INTERVAL = float(os.getenv("TENSION_POLL_INTERVAL", "0.05"))
+SCALE_ERROR_BACKOFF = float(os.getenv("SCALE_ERROR_BACKOFF", "1.0"))
+
 
 # ─────────────────────────── background helpers ───────────────────────────
 
@@ -27,15 +34,98 @@ def frame_is_ready():
     socketio.emit('frame_ready', "frame ready")
 
 
+# Last reading produced by the poller, so the on-demand handlers can answer
+# from cache instead of putting a second reader on the RS485 bus.  Keyed by
+# mode: a weight snapshot must never be served as a tension reading.
+_last_snapshot = {"weight": None, "tension": None}
+_poller_started = False
+
+
+def _ensure_poller():
+    """Start the polling greenlet once, on the first client connection.
+
+    update_net_status() used to be dead code - nothing ever started it - so
+    every view had to drive its own setInterval and the sample rate depended
+    on the browser.
+    """
+    global _poller_started
+    if _poller_started:
+        return
+    _poller_started = True
+    socketio.start_background_task(update_net_status)
+
+
+def _emit_scale_snapshot(snapshot, tension_mode):
+    """Push one reading to the UI.
+
+    `weight_update` / `tension_update` keep carrying the bare number so older
+    views keep working; `scale_status` carries stability and instrument faults
+    straight from the STATUS REGISTER so the UI no longer has to guess.
+    """
+    value = snapshot["net"]
+    socketio.emit('tension_update' if tension_mode else 'weight_update', value)
+    socketio.emit('scale_status', {
+        "value": value,
+        "gross": snapshot["gross"],
+        "stable": snapshot["stable"],
+        "near_zero": snapshot["near_zero"],
+        "faults": snapshot["faults"],
+        "ok": snapshot["ok"],
+        "mode": "tension" if tension_mode else "weight",
+    })
+
+
 def update_net_status():
-    """Background thread: continuously pushes weight or tension to the UI."""
+    """Background thread: continuously pushes weight or tension to the UI.
+
+    This loop must never die: before, a single NoResponseError from the
+    transmitter killed the greenlet and the weight silently froze for the rest
+    of the session.
+    """
+    consecutive_errors = 0
+    last_faults = None
+
     while True:
-        if net.isOnTensionMode():
-            socketio.emit('tension_update', net.readTenstion())
-            socketio.sleep(0.025)
-        else:
-            socketio.emit('weight_update', net.readWeight())
-            socketio.sleep(0.5)
+        tension_mode = net.isOnTensionMode()
+        try:
+            snapshot = (net.readTensionSnapshot() if tension_mode
+                        else net.readWeightSnapshot())
+        except Exception as e:                       # noqa: BLE001
+            consecutive_errors += 1
+            if consecutive_errors in (1, 5) or consecutive_errors % 50 == 0:
+                logEvent(
+                    etapa="SYSTEM", status="ERROR",
+                    error_code="SCALE_READ_ERROR", error_msg=str(e),
+                    additional_data={"consecutive_errors": consecutive_errors,
+                                     "mode": "tension" if tension_mode else "weight"},
+                )
+                socketio.emit('scale_error', {"error": str(e),
+                                              "consecutive": consecutive_errors})
+            socketio.sleep(SCALE_ERROR_BACKOFF)
+            continue
+
+        consecutive_errors = 0
+
+        # Surface load-cell / ADC / overload faults once per transition instead
+        # of on every poll.
+        faults = tuple(snapshot["faults"])
+        if faults != last_faults:
+            if faults:
+                logEvent(
+                    etapa="SYSTEM", status="ERROR",
+                    error_code="SCALE_FAULT", error_msg=", ".join(faults),
+                    additional_data={"faults": list(faults)},
+                )
+            last_faults = faults
+
+        if snapshot.get("calibrating"):
+            socketio.sleep(WEIGHT_POLL_INTERVAL)
+            continue
+
+        _last_snapshot["tension" if tension_mode else "weight"] = snapshot
+        _emit_scale_snapshot(snapshot, tension_mode)
+        socketio.sleep(TENSION_POLL_INTERVAL if tension_mode
+                       else WEIGHT_POLL_INTERVAL)
 
 
 # ─────────────────────────── connection ───────────────────────────────────
@@ -45,6 +135,7 @@ def on_connect(auth):
     print("Client connected")
     ios.set_laser(True)
     ios.set_flash(False)
+    _ensure_poller()
 
 
 @socketio.on('disconnect')
@@ -69,6 +160,10 @@ def calibrate_load_cell(data):
             )
         emit('calibration_step_commited', "step commited")
     except Exception as e:
+        # Never leave isCalibrating latched on: readWeight() returns 0 while it
+        # is set, so a failed step used to freeze the weight display at zero
+        # until the operator happened to reopen the calibration dialog.
+        net.setCalibrating(False)
         logEvent(
             etapa="CALIBRATION", status="ERROR",
             error_code="LOAD_CELL_CALIB_ERROR", error_msg=str(e),
@@ -85,8 +180,10 @@ def resume_net_update(data=None):
 
 @socketio.event
 def enter_to_tension_test(data=None):
+    # This used to only print, so READING_MODE never left weight mode and the
+    # belly view had to poll get_tension by hand.
     with thread_lock:
-        print("enter to tension test")
+        net.enterToTensionTest()
 
 
 @socketio.event
@@ -98,7 +195,7 @@ def enter_to_weight_mode(data=None):
 @socketio.event
 def set_zero(data=None):
     with thread_lock:
-        net.setZero()
+        net.setZero(bool(data))
 
 
 @socketio.event
@@ -108,19 +205,51 @@ def set_tare(data=None):
 
 
 @socketio.event
-def update_net(data=None):
-    print("net update")
+def clear_tare(data=None):
     with thread_lock:
-        weight = net.readWeight()
-    socketio.emit('weight_update', weight)
+        net.clearTare(bool(data))
+
+
+def _serve_cached(tension_mode):
+    """Answer an on-demand poll from the poller's cache.
+
+    Hitting the bus again here would put a second reader on the same RS485
+    line as the background poller and roughly double the traffic.  Falls back
+    to a real read only until the poller has produced its first sample for
+    that mode.
+    """
+    key = "tension" if tension_mode else "weight"
+    snapshot = _last_snapshot[key]
+    if snapshot is None:
+        snapshot = (net.readTensionSnapshot() if tension_mode
+                    else net.readWeightSnapshot())
+        _last_snapshot[key] = snapshot
+    _emit_scale_snapshot(snapshot, tension_mode)
+
+
+@socketio.event
+def update_net(data=None):
+    _serve_cached(tension_mode=False)
 
 
 @socketio.event
 def get_tension(data=None):
-    print("tension update")
-    with thread_lock:
-        tension = net.readTenstion()
-    socketio.emit('tension_update', tension)
+    _serve_cached(tension_mode=True)
+
+
+@socketio.event
+def get_scale_status(data=None):
+    """Full instrument state on demand: value, stability and faults."""
+    snapshot = _last_snapshot["weight"] or net.readWeightSnapshot()
+    emit('scale_status', {
+        "value": snapshot["net"],
+        "gross": snapshot["gross"],
+        "stable": snapshot["stable"],
+        "near_zero": snapshot["near_zero"],
+        "faults": snapshot["faults"],
+        "ok": snapshot["ok"],
+        "division": snapshot["division"],
+    })
 
 
 # ─────────────────────────── vision / capture ─────────────────────────────

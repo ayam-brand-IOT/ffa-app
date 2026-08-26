@@ -103,7 +103,7 @@ def enterToWeightMode():
 
 # ============================= FUNCIONES DE CONTROL =============================
 
-def setZero():
+def setZero(is_belly=False):
     """Establece el punto cero de la báscula"""
     global _zero_offset, _current_stable_weight, _stability_start_time
     
@@ -126,7 +126,7 @@ def setZero():
         }
     )
 
-def setTare(is_belly):
+def setTare(is_belly=False):
     """Establece la tara de la báscula o belly"""
     global _tare_offset, _belly_tare_offset, _current_stable_weight, _stability_start_time, SIMULATED_WEIGHT_BASE
     
@@ -541,6 +541,116 @@ def get_calibration_info():
         "belly_tare_offset": _belly_tare_offset,
         "current_mode": "TENSION" if isOnTensionMode() else "WEIGHT"
     }
+
+# ============================= PARIDAD CON EL HARDWARE REAL =============================
+# TLB_MODBUS.py expone estos nombres desde que se corrigió el mapa de registros
+# y se empezó a leer el STATUS REGISTER (40007).  El emulador los replica para
+# que sockets.py y la UI se comporten igual en DEV_MODE y en producción.
+
+EXPECTED_DIVISION = 0.1
+
+
+class TLBCommunicationError(RuntimeError):
+    """El transmisor no respondió tras todos los reintentos."""
+
+
+class TLBCalibrationError(RuntimeError):
+    """El instrumento rechazó o ignoró un paso de calibración."""
+
+
+def getDivision():
+    """División configurada. El emulador siempre trabaja en décimas de gramo."""
+    return EXPECTED_DIVISION
+
+
+def getUnit():
+    return "g"
+
+
+def clearTare(is_belly=False):
+    """Desactiva la tara semiautomática (comando 9 en el equipo real)."""
+    global _tare_offset, _belly_tare_offset
+    if is_belly:
+        _belly_tare_offset = 0.0
+    else:
+        _tare_offset = 0.0
+    print("↩️  [DEV] Tara desactivada")
+
+
+def readGross():
+    """Peso bruto: en el emulador es el neto sin el offset de tara."""
+    if isCalibrating:
+        return 0.0
+    return max(0.0, _generate_weight_reading() + _zero_offset)
+
+
+def readPeak(is_belly=False):
+    """Pico registrado. El emulador no acumula pico, devuelve la lectura actual."""
+    if is_belly:
+        return readTenstion()
+    return readWeight()
+
+
+def isStable(is_belly=False):
+    """Equivalente al bit 11 del STATUS REGISTER."""
+    if isCalibrating:
+        return False
+    if is_belly:
+        return True
+    return get_stability_info()["is_stable"]
+
+
+def _snapshot(is_belly=False):
+    if isCalibrating:
+        return {
+            "net": 0.0, "gross": 0.0, "counts_net": 0, "counts_gross": 0,
+            "stable": False, "near_zero": False, "net_mode": False,
+            "faults": [], "status": 0, "division": EXPECTED_DIVISION,
+            "ok": False, "calibrating": True,
+        }
+
+    net = readTenstion() if is_belly else readWeight()
+    gross = net if is_belly else readGross()
+    stable = isStable(is_belly)
+
+    return {
+        "net": round(net, 4),
+        "gross": round(gross, 4),
+        "counts_net": int(round(net / EXPECTED_DIVISION)),
+        "counts_gross": int(round(gross / EXPECTED_DIVISION)),
+        "stable": stable,
+        "near_zero": abs(net) < EXPECTED_DIVISION / 4,
+        "net_mode": True,
+        "faults": [],
+        "status": (1 << 11) if stable else 0,
+        "division": EXPECTED_DIVISION,
+        "ok": True,
+    }
+
+
+def readWeightSnapshot():
+    """Lectura completa de peso neto: valor, estabilidad y fallas."""
+    return _snapshot(is_belly=False)
+
+
+def readTensionSnapshot():
+    """Lectura completa de tensión."""
+    return _snapshot(is_belly=True)
+
+
+def add_calibration_point(sample_grams, is_belly=False):
+    """Punto de linealización adicional (comando 106 en el equipo real)."""
+    _calibration_points.append(float(sample_grams))
+    print(f"📌 [DEV] Punto de calibración agregado: {sample_grams}g "
+          f"(total: {len(_calibration_points)})")
+
+
+def cancel_calibration(is_belly=False):
+    """Cancela la calibración real (comando 104 en el equipo real)."""
+    global _calibration_points
+    _calibration_points = []
+    print("🚫 [DEV] Calibración real cancelada")
+
 
 # ============================= INICIALIZACIÓN =============================
 

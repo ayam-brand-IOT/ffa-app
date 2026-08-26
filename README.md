@@ -72,7 +72,37 @@ La captura sincronizada con flash acepta estos ajustes opcionales:
 - `FLASH_FRAME_SKIP`: cantidad de frames nuevos que espera despues de encender el flash. Valor por defecto: `2`
 - `FLASH_FRAME_TIMEOUT`: timeout maximo para esperar frames frescos. Valor por defecto: `0.35`
 
+El transmisor de peso (TLB, Modbus-RTU) acepta:
+
+- `TLB_PORT`: puerto serie. Valor por defecto: `/dev/ttyUSB0`
+- `TLB_BAUDRATE`: velocidad del bus RS485. Valor por defecto: `9600`
+- `TLB_TIMEOUT`: timeout de respuesta en segundos. Valor por defecto: `0.2`
+- `TLB_RETRIES`: reintentos por transaccion. Valor por defecto: `2`
+- `TLB_RETRY_DELAY`: back-off entre reintentos. Valor por defecto: `0.02`
+- `TLB_CALIB_SAMPLE_GRAMS`: peso patron de la calibracion guiada. Valor por defecto: `1000.0`
+- `WEIGHT_POLL_INTERVAL`: periodo de muestreo de peso. Valor por defecto: `0.25`
+- `TENSION_POLL_INTERVAL`: periodo de muestreo de tension. Valor por defecto: `0.05`
+- `SCALE_ERROR_BACKOFF`: espera tras un error de lectura. Valor por defecto: `1.0`
+
 Estas variables dependen de la implementacion concreta de los modulos de hardware.
+
+## Peso: estabilidad y calibracion
+
+Ver [`docs/WEIGHT_STABILITY.md`](docs/WEIGHT_STABILITY.md) para el mapa de
+registros del TLB, el uso del STATUS REGISTER, el procedimiento de calibracion
+y el checklist de causas fisicas.
+
+Diagnostico en planta:
+
+```bash
+python3 tools/scale_diagnostics.py --duration 600 --interval 0.2
+```
+
+Verificacion del mapa de registros sin hardware:
+
+```bash
+python3 tests/test_tlb_registers.py
+```
 
 ## Arranque
 
