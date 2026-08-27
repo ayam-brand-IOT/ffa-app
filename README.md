@@ -88,9 +88,11 @@ Estas variables dependen de la implementacion concreta de los modulos de hardwar
 
 ## Peso: estabilidad y calibracion
 
-Ver [`docs/WEIGHT_STABILITY.md`](docs/WEIGHT_STABILITY.md) para el mapa de
-registros del TLB, el uso del STATUS REGISTER, el procedimiento de calibracion
-y el checklist de causas fisicas.
+- [`docs/tlb/README.md`](docs/tlb/README.md) — guia completa del transmisor:
+  navegacion del teclado, mapa de menus, diagnostico, referencia de parametros,
+  procedimiento de calibracion paso a paso y troubleshooting.
+- [`docs/WEIGHT_STABILITY.md`](docs/WEIGHT_STABILITY.md) — el mapa de registros
+  del TLB, el uso del STATUS REGISTER y que cambio en el codigo.
 
 Diagnostico en planta:
 

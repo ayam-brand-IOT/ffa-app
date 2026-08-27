@@ -6,6 +6,10 @@ siempre se está moviendo y constantemente se descalibra"*.
 Referencia: `Docs/TLB_protocols_manual_EN.pdf`, "TLB COMMUNICATION PROTOCOLS"
 v1.16, sección MODBUS-RTU PROTOCOL (páginas 9-19).
 
+Para la configuración y calibración del transmisor desde el teclado —mapa de
+menús, parámetros, procedimiento paso a paso y troubleshooting— ver
+[`tlb/README.md`](tlb/README.md).
+
 ---
 
 ## 1. Mapa de registros corregido
