@@ -120,6 +120,10 @@ def test_reading_variations():
     print("\n" + "="*70)
     print("TEST 4: Variaciones de Lectura")
     print("="*70)
+
+    # Previous calibration tests intentionally leave tare offsets active.
+    # Isolate this test so it measures the simulated sensor variation itself.
+    net.reset_offsets()
     
     print("\n📋 Tomando 10 lecturas de peso...")
     weights = []

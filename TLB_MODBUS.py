@@ -139,6 +139,7 @@ STOPBITS = serial.STOPBITS_TWO
 TIMEOUT = float(os.getenv("TLB_TIMEOUT", "0.2"))
 RETRIES = int(os.getenv("TLB_RETRIES", "2"))
 RETRY_DELAY = float(os.getenv("TLB_RETRY_DELAY", "0.02"))
+STALE_MAX_AGE_SECONDS = float(os.getenv("TLB_STALE_MAX_AGE_SECONDS", "2.0"))
 
 # Nominal sample weight used by the guided calibration, in grams.
 CALIB_SAMPLE_GRAMS = float(os.getenv("TLB_CALIB_SAMPLE_GRAMS", "1000.0"))
@@ -199,24 +200,24 @@ def _for(is_belly):
 
 # ============================= LOW LEVEL ====================================
 
-def _transact(description, fn, *args):
+def _transact(description, fn, *args, retries=RETRIES):
     """Run one Modbus transaction under _lock, retrying on failure.
 
     The lock is taken and released inside the loop so the back-off sleep never
     happens while holding it.
     """
     last_error = None
-    for attempt in range(RETRIES + 1):
+    for attempt in range(retries + 1):
         try:
             with _lock:
                 return fn(*args)
         except Exception as exc:      # noqa: BLE001 - pyserial/minimalmodbus
             last_error = exc
-            if attempt < RETRIES:
+            if attempt < retries:
                 time.sleep(RETRY_DELAY)
     raise TLBCommunicationError(
         "{0} failed after {1} attempts: {2}".format(
-            description, RETRIES + 1, last_error)
+            description, retries + 1, last_error)
     ) from last_error
 
 
@@ -237,6 +238,21 @@ def _write_many(inst, address, values):
         "write {0} to registers from {1} of slave {2}".format(
             values, address, inst.address),
         inst.write_registers, address, values)
+
+
+def _write_command(inst, command):
+    """Write a non-idempotent command exactly once.
+
+    A lost Modbus response does not prove the transmitter ignored the command;
+    retrying could execute tare/calibration/save twice.
+    """
+    return _transact(
+        "command {0} to slave {1}".format(command, inst.address),
+        inst.write_register,
+        REG_COMMAND,
+        command,
+        retries=0,
+    )
 
 
 def _apply_sign(high, low, negative):
@@ -269,19 +285,32 @@ def _load_division():
     try:
         raw = _read(instrument, REG_DIVISIONS, 1)[0]
     except TLBCommunicationError as exc:
-        _division = EXPECTED_DIVISION
         logEvent(
             etapa="SYSTEM", status="WARNING",
             error_code="TLB_DIVISION_READ_FAILED", error_msg=str(exc),
-            additional_data={"fallback_division": EXPECTED_DIVISION},
+            additional_data={"action": "will_retry_before_measurement"},
         )
-        return _division
+        # A guessed division can silently scale every stored weight by 10x or
+        # 100x. Do not cache it: the next polling cycle will retry the read.
+        raise
 
     division_index = raw & 0xFF
     unit_index = (raw >> 8) & 0xFF
 
-    _division = (_DIVISION_TABLE[division_index]
-                 if division_index < len(_DIVISION_TABLE) else EXPECTED_DIVISION)
+    if division_index >= len(_DIVISION_TABLE):
+        error_msg = "invalid division index {0} in register 40014".format(
+            division_index
+        )
+        logEvent(
+            etapa="SYSTEM",
+            status="ERROR",
+            error_code="TLB_DIVISION_INVALID",
+            error_msg=error_msg,
+            additional_data={"raw_register_40014": raw},
+        )
+        raise TLBCommunicationError(error_msg)
+
+    _division = _DIVISION_TABLE[division_index]
     _unit = _UNIT_NAMES[unit_index] if unit_index < len(_UNIT_NAMES) else "?"
 
     logEvent(
@@ -317,6 +346,7 @@ def _idle_snapshot():
         "faults": [], "status": 0,
         "division": _division or EXPECTED_DIVISION,
         "ok": False, "calibrating": True,
+        "stale": False, "age_seconds": 0.0,
     }
 
 
@@ -337,18 +367,30 @@ def _snapshot(is_belly=False):
         status, gross_h, gross_l, net_h, net_l = _read(
             inst, _BLOCK_START, _BLOCK_COUNT)
     except TLBCommunicationError as exc:
-        stale = _last_good.get(inst.address)
+        stale_entry = _last_good.get(inst.address)
+        stale_age = (
+            time.monotonic() - stale_entry[0]
+            if stale_entry is not None
+            else None
+        )
+        stale_allowed = (
+            stale_entry is not None and stale_age <= STALE_MAX_AGE_SECONDS
+        )
         logEvent(
             etapa="SYSTEM", status="ERROR",
             error_code="TLB_READ_ERROR", error_msg=str(exc),
             additional_data={"slave": inst.address,
-                             "served_stale": stale is not None},
+                             "served_stale": stale_allowed,
+                             "stale_age_seconds": stale_age,
+                             "stale_max_age_seconds": STALE_MAX_AGE_SECONDS},
         )
-        if stale is None:
+        if not stale_allowed:
             raise
-        degraded = dict(stale)
+        degraded = dict(stale_entry[1])
         degraded["ok"] = False
         degraded["stable"] = False
+        degraded["stale"] = True
+        degraded["age_seconds"] = round(stale_age, 3)
         return degraded
 
     gross = _apply_sign(gross_h, gross_l, status & ST_GROSS_NEGATIVE)
@@ -366,8 +408,10 @@ def _snapshot(is_belly=False):
         "status": status,
         "division": division,
         "ok": True,
+        "stale": False,
+        "age_seconds": 0.0,
     }
-    _last_good[inst.address] = snapshot
+    _last_good[inst.address] = (time.monotonic(), snapshot)
     return snapshot
 
 
@@ -430,7 +474,7 @@ def enterToWeightMode():
 def setZero(is_belly=False):
     """Semi-automatic zero: corrects small drift of the gross zero."""
     print("Setting to Zero")
-    _write(_for(is_belly), REG_COMMAND, CMD_ZERO)
+    _write_command(_for(is_belly), CMD_ZERO)
     logEvent(etapa="CALIBRATION", status="SUCCESS",
              additional_data={"action": "set_zero", "belly": bool(is_belly)})
 
@@ -442,14 +486,14 @@ def setTare(is_belly=False):
     mount was taring out fish, water and ice and looked like a decalibration.
     """
     print("Tare belly" if is_belly else "Tare")
-    _write(_for(is_belly), REG_COMMAND, CMD_TARE_SEMI)
+    _write_command(_for(is_belly), CMD_TARE_SEMI)
     logEvent(etapa="CALIBRATION", status="SUCCESS",
              additional_data={"action": "set_tare", "belly": bool(is_belly)})
 
 
 def clearTare(is_belly=False):
     """Disable the semi-automatic tare and go back to displaying gross."""
-    _write(_for(is_belly), REG_COMMAND, CMD_TARE_DISABLE)
+    _write_command(_for(is_belly), CMD_TARE_DISABLE)
 
 
 def setCalibrating(value: bool):
@@ -527,7 +571,7 @@ def remote_calibration(step, args):
     elif step == 2:
         print("Tare weight zero setting")
         _wait_for_stability(inst)
-        _write(inst, REG_COMMAND, CMD_CALIB_TARE)
+        _write_command(inst, CMD_CALIB_TARE)
 
     elif step == 3:
         counts = _sample_counts(CALIB_SAMPLE_GRAMS, division)
@@ -535,12 +579,12 @@ def remote_calibration(step, args):
             CALIB_SAMPLE_GRAMS, counts))
         _wait_for_stability(inst)
         _write_sample_weight(inst, counts)
-        _write(inst, REG_COMMAND, CMD_SAVE_FIRST)
+        _write_command(inst, CMD_SAVE_FIRST)
         _verify_sample_consumed(inst)
 
     elif step == 4:
         print("Persisting calibration to EEPROM")
-        _write(inst, REG_COMMAND, CMD_SAVE_EEPROM)
+        _write_command(inst, CMD_SAVE_EEPROM)
         isCalibrating = False
 
     else:
@@ -553,13 +597,13 @@ def add_calibration_point(sample_grams, is_belly=False):
     counts = _sample_counts(sample_grams, _load_division())
     _wait_for_stability(inst)
     _write_sample_weight(inst, counts)
-    _write(inst, REG_COMMAND, CMD_SAVE_NEXT)
+    _write_command(inst, CMD_SAVE_NEXT)
     _verify_sample_consumed(inst)
 
 
 def cancel_calibration(is_belly=False):
     """Drop the real calibration and fall back to the theoretical one."""
-    _write(_for(is_belly), REG_COMMAND, CMD_CALIB_CANCEL)
+    _write_command(_for(is_belly), CMD_CALIB_CANCEL)
 
 
 def physical_calibration():
@@ -570,13 +614,13 @@ def physical_calibration():
 
     input("1. Empty the scale and press Enter to zero the tare weight: ")
     _wait_for_stability(instrument)
-    _write(instrument, REG_COMMAND, CMD_CALIB_TARE)
+    _write_command(instrument, CMD_CALIB_TARE)
 
     input("2. Place the {0} g calibration weight and press Enter: ".format(
         CALIB_SAMPLE_GRAMS))
     _wait_for_stability(instrument)
     _write_sample_weight(instrument, _sample_counts(CALIB_SAMPLE_GRAMS, division))
-    _write(instrument, REG_COMMAND, CMD_SAVE_FIRST)
+    _write_command(instrument, CMD_SAVE_FIRST)
     _verify_sample_consumed(instrument)
     print("   first point saved")
 
@@ -586,5 +630,5 @@ def physical_calibration():
         add_calibration_point(grams)
         print("   point saved")
 
-    _write(instrument, REG_COMMAND, CMD_SAVE_EEPROM)
+    _write_command(instrument, CMD_SAVE_EEPROM)
     print("Calibration stored in EEPROM.")

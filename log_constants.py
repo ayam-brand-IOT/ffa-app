@@ -51,6 +51,8 @@ ERROR_CODES: Dict[str, str] = {
     "LENGTH_CALIB_ERROR": "Error en calibración de longitud",
     "ZOI_CALIB_ERROR": "Error en calibración de zona de interés",
     "CALIBRATION_TIMEOUT": "Timeout en proceso de calibración",
+    "CALIBRATION_BUSY": "Otra sesión ya controla la calibración",
+    "CALIBRATION_ABANDONED": "El cliente abandonó la calibración",
     
     # Errores de configuración
     "CONFIG_READ_ERROR": "Error al leer archivo de configuración",
@@ -76,6 +78,9 @@ ERROR_CODES: Dict[str, str] = {
     "WEIGHT_UNSTABLE": "Peso inestable, no se puede registrar",
     "WEIGHT_TIMEOUT": "Timeout esperando peso estable",
     "MODBUS_CONNECTION_ERROR": "Error de conexión Modbus",
+    "SCALE_READ_ERROR": "Error al leer el transmisor de peso",
+    "SCALE_FAULT": "El transmisor reportó una falla física",
+    "SCALE_POLLER_ERROR": "El supervisor del peso reinició el polling",
     
     # Errores de lote
     "LOTE_CREATION_ERROR": "Error al crear nuevo lote",
@@ -100,6 +105,16 @@ ERROR_CODES: Dict[str, str] = {
     
     # Errores de reset
     "RESET_ERROR": "Error al resetear sistema",
+
+    # Errores de captura y analisis de imagen
+    "RAW_IMAGE_SAVE_ERROR": "No se pudo persistir la imagen cruda de muestra",
+    "ANALYSIS_INVALID": "El análisis no produjo una medición válida",
+    "FISH_PARAMETERS_INVALID": "Parámetros de pescado inválidos",
+
+    # Errores del transmisor de peso
+    "TLB_DIVISION_READ_FAILED": "No se pudo leer la división configurada del transmisor",
+    "TLB_DIVISION_INVALID": "El transmisor devolvió una división desconocida",
+    "TLB_READ_ERROR": "No se pudo leer el transmisor de peso",
 }
 
 # ============================================================================

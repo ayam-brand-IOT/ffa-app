@@ -71,6 +71,11 @@ La captura sincronizada con flash acepta estos ajustes opcionales:
 - `FLASH_SETTLE_SECONDS`: pausa corta despues de encender el flash. Valor por defecto: `0.03`
 - `FLASH_FRAME_SKIP`: cantidad de frames nuevos que espera despues de encender el flash. Valor por defecto: `2`
 - `FLASH_FRAME_TIMEOUT`: timeout maximo para esperar frames frescos. Valor por defecto: `0.35`
+- `CAMERA_RETRY_INITIAL`: espera inicial para reabrir una camara desconectada. Valor por defecto: `0.5`
+- `CAMERA_RETRY_MAX`: espera maxima entre intentos de reconexion. Valor por defecto: `10.0`
+- `CAMERA_READ_FAILURE_LIMIT`: lecturas fallidas antes de reabrir el dispositivo. Valor por defecto: `3`
+- `VIDEO_NO_FRAME_BACKOFF`: pausa del stream cuando no hay frame. Valor por defecto: `0.1`
+- `VIDEO_FRAME_BACKOFF`: limite aproximado de ritmo del stream. Valor por defecto: `0.03`
 
 El transmisor de peso (TLB, Modbus-RTU) acepta:
 
@@ -79,10 +84,12 @@ El transmisor de peso (TLB, Modbus-RTU) acepta:
 - `TLB_TIMEOUT`: timeout de respuesta en segundos. Valor por defecto: `0.2`
 - `TLB_RETRIES`: reintentos por transaccion. Valor por defecto: `2`
 - `TLB_RETRY_DELAY`: back-off entre reintentos. Valor por defecto: `0.02`
+- `TLB_STALE_MAX_AGE_SECONDS`: antiguedad maxima de un peso reutilizable tras perder comunicacion. Valor por defecto: `2.0`
 - `TLB_CALIB_SAMPLE_GRAMS`: peso patron de la calibracion guiada. Valor por defecto: `1000.0`
 - `WEIGHT_POLL_INTERVAL`: periodo de muestreo de peso. Valor por defecto: `0.25`
 - `TENSION_POLL_INTERVAL`: periodo de muestreo de tension. Valor por defecto: `0.05`
 - `SCALE_ERROR_BACKOFF`: espera tras un error de lectura. Valor por defecto: `1.0`
+- `CALIBRATION_LEASE_SECONDS`: inactividad permitida antes de liberar una calibracion abandonada. Valor por defecto: `300`
 
 Estas variables dependen de la implementacion concreta de los modulos de hardware.
 
@@ -154,8 +161,10 @@ Nota importante: el repo actual solo trae `ffa-app/dist/.gitkeep`. Para servir l
 - `enter_to_weight_mode`
 - `set_zero`
 - `set_tare`
+- `clear_tare`
 - `update_net`
 - `get_tension`
+- `get_scale_status`
 - `get_analysis_data`
 - `capture`
 - `reset`
@@ -167,10 +176,15 @@ Nota importante: el repo actual solo trae `ffa-app/dist/.gitkeep`. Para servir l
 
 - `weight_update`
 - `tension_update`
+- `scale_status` — valor, estabilidad (bit 11 del STATUS REGISTER) y fallas del instrumento
+- `scale_error` — el poller no pudo leer el transmisor
 - `frame_ready`
 - `analysis_data`
+- `analysis_error` — el analisis no produjo una medicion valida; la UI **no** debe
+  mostrar la medicion anterior como si fuera nueva
 - `calibration_step_commited`
 - `calibration_error`
+- `fishParamsResponse`
 
 ## Configuracion de vision
 

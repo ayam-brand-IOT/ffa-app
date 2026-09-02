@@ -57,6 +57,7 @@ _calibration_step = 0
 
 STABILITY_DURATION = 1.2  # Duración de estabilidad en segundos
 STABILITY_TOLERANCE = 0.05  # Tolerancia de variación durante estabilidad (gramos)
+WEIGHT_CHANGE_INTERVAL = 2.5  # Tiempo mínimo antes de simular una nueva carga
 
 # Estado de estabilidad
 _current_stable_weight = None
@@ -105,15 +106,11 @@ def enterToWeightMode():
 
 def setZero(is_belly=False):
     """Establece el punto cero de la báscula"""
-    global _zero_offset, _current_stable_weight, _stability_start_time
+    global _zero_offset
     
     # Simular el ajuste de cero
     current_reading = _generate_weight_reading()
     _zero_offset = -current_reading
-    
-    # Resetear estabilidad para generar nuevo peso estable
-    _current_stable_weight = None
-    _stability_start_time = None
     
     print(f"🎯 [DEV] Configurando a cero (offset: {_zero_offset:.2f}g)")
     logEvent(
@@ -128,7 +125,7 @@ def setZero(is_belly=False):
 
 def setTare(is_belly=False):
     """Establece la tara de la báscula o belly"""
-    global _tare_offset, _belly_tare_offset, _current_stable_weight, _stability_start_time, SIMULATED_WEIGHT_BASE
+    global _tare_offset, _belly_tare_offset
     
     if is_belly:
         current_reading = _generate_tension_reading()
@@ -149,13 +146,8 @@ def setTare(is_belly=False):
         current_reading = _generate_weight_reading()
         _tare_offset = -current_reading - _zero_offset
         
-        # Ajustar el peso base para que después de tara esté cerca de 0
-        # Esto simula que el objeto sigue en la báscula después de tarar
-        SIMULATED_WEIGHT_BASE = current_reading + _zero_offset
-        
-        # Resetear estabilidad para generar nuevo peso estable (que será ~0)
-        _current_stable_weight = None
-        _stability_start_time = None
+        # Keep the same simulated physical load after tare. Starting a new
+        # random load here would shift the displayed zero by several grams.
         print(f"⚖️  [DEV] Tara establecida (offset: {_tare_offset:.2f}g)")
         
         logEvent(
@@ -188,9 +180,9 @@ def _generate_weight_reading():
     # Calcular tiempo en estabilidad actual
     time_stable = current_time - _stability_start_time
     
-    # Si ya pasaron 1.2s estables, generar nuevo peso y mantenerlo
-    if time_stable >= STABILITY_DURATION:
-        # Generar nuevo peso objetivo cada 1.2s
+    # Keep a load stable long enough for the UI to observe the stable state.
+    if time_stable >= WEIGHT_CHANGE_INTERVAL:
+        # Then simulate a new object/load being placed on the scale.
         slow_variation = random.uniform(-WEIGHT_VARIATION, WEIGHT_VARIATION)
         _current_stable_weight = SIMULATED_WEIGHT_BASE + slow_variation
         _stability_start_time = current_time
@@ -607,6 +599,7 @@ def _snapshot(is_belly=False):
             "stable": False, "near_zero": False, "net_mode": False,
             "faults": [], "status": 0, "division": EXPECTED_DIVISION,
             "ok": False, "calibrating": True,
+            "stale": False, "age_seconds": 0.0,
         }
 
     net = readTenstion() if is_belly else readWeight()
@@ -625,6 +618,8 @@ def _snapshot(is_belly=False):
         "status": (1 << 11) if stable else 0,
         "division": EXPECTED_DIVISION,
         "ok": True,
+        "stale": False,
+        "age_seconds": 0.0,
     }
 
 

@@ -7,6 +7,7 @@ routes are registered directly on the shared `app` instance).
 
 import cv2
 import json
+import os
 import eventlet
 import imageProcess
 from flask import render_template, Response, request
@@ -14,6 +15,9 @@ from flask import render_template, Response, request
 from app import app, socketio
 from logger import logEvent
 from services.config_service import update_fish_params, update_config, get_config
+
+VIDEO_NO_FRAME_BACKOFF = float(os.getenv("VIDEO_NO_FRAME_BACKOFF", "0.1"))
+VIDEO_FRAME_BACKOFF = float(os.getenv("VIDEO_FRAME_BACKOFF", "0.03"))
 
 
 # ─────────────────────────── video helpers ────────────────────────────────
@@ -23,17 +27,19 @@ def _video_stream():
         # eventlet.sleep(0) yields control to other greenlets so that
         # socket handlers, the analyzed_image route, etc. are not starved
         # by this tight encoding loop.
-        eventlet.sleep(0)
         frame = imageProcess.updateImage()
         if frame is None:
+            eventlet.sleep(VIDEO_NO_FRAME_BACKOFF)
             continue
         cv2.line(frame, (200, 0), (200, 1000), (0, 0, 255), 1)
         cv2.line(frame, (0, 330), (1000, 330), (0, 0, 255), 1)
         ret, buffer = cv2.imencode('.jpeg', frame)
         if not ret:
+            eventlet.sleep(VIDEO_NO_FRAME_BACKOFF)
             continue
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+        eventlet.sleep(VIDEO_FRAME_BACKOFF)
 
 
 def _analyzed_image_response():
@@ -81,16 +87,26 @@ def analyzed_image():
 @app.route('/length_calibration', methods=['POST'])
 def length_calibration():
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         print("Length calibration data:", data)
-        old_ratio = imageProcess.get_px_mm_ratio() if hasattr(imageProcess, 'get_px_mm_ratio') else None
-        imageProcess.write_px_mm_ratio(data['ratio'])
+        if not isinstance(data, dict):
+            raise ValueError("La calibracion debe enviarse como un objeto JSON")
+        old_ratio = imageProcess.get_px_mm_ratio()
+        new_ratio = data['ratio']
+        imageProcess.write_px_mm_ratio(new_ratio)
         logEvent(
             etapa="CALIBRATION", status="SUCCESS",
-            vision_params={"old_ratio": old_ratio, "new_ratio": data['ratio']},
+            vision_params={"old_ratio": old_ratio, "new_ratio": new_ratio},
             additional_data={"calibration_type": "length"},
         )
         return "ok"
+    except (ValueError, KeyError, TypeError) as e:
+        # Rejected input, not a server failure: never persist an unusable ratio.
+        error_msg = str(e) if isinstance(e, ValueError) else "Falta el campo 'ratio'"
+        logEvent(etapa="CALIBRATION", status="ERROR",
+                 error_code="LENGTH_CALIB_ERROR", error_msg=error_msg,
+                 additional_data={"calibration_type": "length"})
+        return {"error": error_msg}, 400
     except Exception as e:
         logEvent(etapa="CALIBRATION", status="ERROR",
                  error_code="LENGTH_CALIB_ERROR", error_msg=str(e),
@@ -101,7 +117,7 @@ def length_calibration():
 @app.route('/calibrate_zoi', methods=['POST'])
 def calibrate_zoi():
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
         print("Calibrate ZOI data:", data)
         imageProcess.writeZOI(data)
         logEvent(
@@ -110,6 +126,13 @@ def calibrate_zoi():
             additional_data={"calibration_type": "zoi"},
         )
         return "ok"
+    except (ValueError, KeyError, TypeError) as e:
+        # Rejected input, not a server failure: never persist an unusable ZOI.
+        error_msg = str(e) if isinstance(e, ValueError) else "La ZOI recibida es invalida"
+        logEvent(etapa="CALIBRATION", status="ERROR",
+                 error_code="ZOI_CALIB_ERROR", error_msg=error_msg,
+                 additional_data={"calibration_type": "zoi"})
+        return {"error": error_msg}, 400
     except Exception as e:
         logEvent(etapa="CALIBRATION", status="ERROR",
                  error_code="ZOI_CALIB_ERROR", error_msg=str(e),
@@ -121,15 +144,15 @@ def calibrate_zoi():
 
 @app.route('/update_fish_params', methods=['POST'])
 def update_fish_params_route():
-    data = request.get_json()
+    data = request.get_json(silent=True)
     result = update_fish_params(data)
-    status = 200 if result.get("status") == "ok" else 404
+    status = result.pop("_http_status", 500)
     return json.dumps(result), status, {"Content-Type": "application/json"}
 
 
 @app.route('/update_config', methods=['POST'])
 def update_config_route():
-    data = request.get_json()
+    data = request.get_json(silent=True)
     result, status = update_config(data)
     return json.dumps(result), status, {"Content-Type": "application/json"}
 
