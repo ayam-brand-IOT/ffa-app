@@ -29,9 +29,9 @@ SIGN
     magnitude-only device and one that already sends two's complement.
 
 SCALE
-    The displayed value is (raw counts x division).  The division is read from
-    register 40014 instead of being hard-coded, so changing it on the
-    instrument keypad no longer silently rescales every reading.
+    Weight registers contain display digits without the decimal point, not
+    a count of divisions. Register 40014 determines the decimal places:
+    division 0.5 requires a factor of 0.1, not 0.5 (WTB485 bench verified).
 
 LOCKING
     _lock is created at import time, which under the current main.py runs
@@ -350,6 +350,16 @@ def _idle_snapshot():
     }
 
 
+def _weight_decimal_scale(division):
+    """Restore display decimals without multiplying by the resolution step."""
+    from decimal import Decimal
+
+    value = Decimal(str(division))
+    if not value.is_finite() or value <= 0:
+        raise ValueError("Invalid weight division")
+    return 10.0 ** min(0, value.normalize().as_tuple().exponent)
+
+
 def _snapshot(is_belly=False):
     """Status + gross + net in a single Modbus transaction.
 
@@ -397,8 +407,8 @@ def _snapshot(is_belly=False):
     net = _apply_sign(net_h, net_l, status & ST_NET_NEGATIVE)
 
     snapshot = {
-        "net": round(net * division, 4),
-        "gross": round(gross * division, 4),
+        "net": round(net * _weight_decimal_scale(division), 4),
+        "gross": round(gross * _weight_decimal_scale(division), 4),
         "counts_net": net,
         "counts_gross": gross,
         "stable": bool(status & ST_STABLE),
@@ -448,7 +458,7 @@ def readPeak(is_belly=False):
     """Peak weight held by the instrument. Useful for diagnostics."""
     division = _load_division()
     high, low = _read(_for(is_belly), REG_PEAK_H, 2)
-    return round(_apply_sign(high, low, False) * division, 4)
+    return round(_apply_sign(high, low, False) * _weight_decimal_scale(division), 4)
 
 
 # ============================= MODE =========================================

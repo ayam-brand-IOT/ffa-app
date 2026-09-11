@@ -228,6 +228,35 @@ def test_division_is_read_from_the_instrument():
     tlb._division = None
 
 
+def test_wtb_display_decimals():
+    """Real WTB485: register 263 and raw 10000 mean 1000.0 g."""
+    reset()
+    try:
+        for index, factor in ((0, 1), (4, 1), (6, 1), (7, 0.1),
+                              (8, 0.1), (9, 0.1), (10, 0.01),
+                              (11, 0.01), (13, 0.001), (16, 0.0001)):
+            tlb._division = None
+            tlb.instrument.registers[13] = (1 << 8) | index
+            tlb.instrument.set_net(10000)
+            tlb.instrument.set_gross(10000)
+            tlb.instrument.set_peak(10000)
+            snapshot = tlb.readWeightSnapshot()
+            expected = round(10000 * factor, 4)
+            check("net decimal index " + str(index), snapshot["net"], expected)
+            check("gross decimal index " + str(index), snapshot["gross"], expected)
+            check("peak decimal index " + str(index), tlb.readPeak(), expected)
+            check("resolution retained", snapshot["division"], tlb._DIVISION_TABLE[index])
+        tlb._division = None
+        tlb.instrument.registers[13] = 263
+        tlb.instrument.set_net(0)
+        check("WTB zero", tlb.readWeight(), 0.0)
+        tlb.instrument.set_net(25, negative=True)
+        check("WTB negative", tlb.readWeight(), -2.5)
+    finally:
+        reset()
+        tlb._division = None
+
+
 def test_calibration_sequence():
     print("\nCalibration writes the manual's command sequence")
     reset()
@@ -309,6 +338,7 @@ def main():
         test_negative_weight,
         test_faults_are_surfaced,
         test_division_is_read_from_the_instrument,
+        test_wtb_display_decimals,
         test_calibration_sequence,
         test_calibration_rejects_a_silent_failure,
         test_retry_then_stale_fallback,
