@@ -36,9 +36,9 @@ SCALE
 LOCKING
     _lock is created at import time, which under the current main.py runs
     BEFORE eventlet.monkey_patch() - so it is a real OS lock, not a green one.
-    Blocking on it from a greenlet blocks the whole hub, and sleeping while
-    holding it deadlocks the process outright.  Therefore: the lock is held
-    for exactly one Modbus transaction and never across a sleep.
+    Blocking on it from a greenlet can freeze the hub while its owner waits
+    for serial IO. Wait cooperatively for the lock and hold it for exactly
+    one transaction; retry delays happen after releasing it.
 """
 
 import os
@@ -344,7 +344,7 @@ def _load_division():
 
 
 def getDivision():
-    """Value of one count as configured on the instrument."""
+    """Display resolution, distinct from the raw-register decimal scale."""
     return _load_division()
 
 

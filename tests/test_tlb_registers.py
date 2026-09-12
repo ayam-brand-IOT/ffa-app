@@ -41,6 +41,7 @@ class FakeInstrument:
         self.clear_buffers_before_each_transaction = False
         self.close_port_after_each_call = True
         self.commands = []
+        self.saved_samples = []
         FakeInstrument.banks.setdefault(address, self._fresh_bank())
         self.registers = FakeInstrument.banks[address]
 
@@ -93,6 +94,7 @@ class FakeInstrument:
             self.commands.append(value)
             # Manual p.16: a successful save zeroes the sample weight pair.
             if value in (101, 106):
+                self.saved_samples.append((self.registers[36] << 16) | self.registers[37])
                 self.registers[36] = 0
                 self.registers[37] = 0
         else:
@@ -263,6 +265,8 @@ def test_calibration_sequence():
     tlb._division = None
     tlb.instrument.set_stable(True)
     tlb.instrument.commands.clear()
+    tlb.instrument.saved_samples.clear()
+    tlb.instrument.registers[13] = 263  # WTB485: grams, division 0.5
 
     tlb.remote_calibration(1, "weight")
     tlb.remote_calibration(2, "weight")
@@ -270,6 +274,9 @@ def test_calibration_sequence():
 
     tlb.remote_calibration(3, "weight")
     check("step 3 sends command 101", tlb.instrument.commands, [100, 101])
+    check("1 kg sample encoded as display digits", tlb.instrument.saved_samples, [10000])
+    tlb.instrument.set_net(tlb.instrument.saved_samples[0])
+    check("calibrated 1 kg reads back as 1000 g", tlb.readWeight(), 1000.0)
 
     tlb.remote_calibration(4, "weight")
     check("step 4 sends command 99", tlb.instrument.commands, [100, 101, 99])

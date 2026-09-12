@@ -13,6 +13,14 @@ Servicio Python que opera la parte local del sistema FFA: hardware, vision, vide
 
 `ffa-app` escucha en `http://localhost:3030`.
 
+La conversion de peso, la codificacion de calibracion y la espera cooperativa
+del puerto RS485 estan integradas en `TLB_MODBUS.py`. No requieren scripts de
+parcheo. Con una division de 0.5 g, el registro 10000 representa 1000.0 g;
+la calibracion con una masa de 1000 g envia 10000. Tras actualizar el codigo,
+reconstruir la imagen Docker y recrear el contenedor: reiniciarlo solamente
+no instala la nueva imagen. Conservar la configuracion y las muestras antes
+de reemplazar un contenedor sin volumenes persistentes.
+
 ## Archivos principales
 
 ```text
