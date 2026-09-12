@@ -29,3 +29,5 @@ build/
 .vscode/
 .idea/
 
+# Optional local regression-test dependencies
+.test-runtime/

@@ -44,6 +44,7 @@ LOCKING
 import os
 import time
 from threading import Lock
+from contextlib import contextmanager
 
 import serial
 import minimalmodbus
@@ -200,6 +201,21 @@ def _for(is_belly):
 
 # ============================= LOW LEVEL ====================================
 
+@contextmanager
+def _serial_transaction_lock():
+    """Wait cooperatively when Eventlet has patched time.sleep.
+
+    The lock is native because hardware loads before monkey_patch. Blocking
+    on it would freeze the hub while its owner waits for serial IO.
+    """
+    while not _lock.acquire(blocking=False):
+        time.sleep(0.001)
+    try:
+        yield
+    finally:
+        _lock.release()
+
+
 def _transact(description, fn, *args, retries=RETRIES):
     """Run one Modbus transaction under _lock, retrying on failure.
 
@@ -209,7 +225,7 @@ def _transact(description, fn, *args, retries=RETRIES):
     last_error = None
     for attempt in range(retries + 1):
         try:
-            with _lock:
+            with _serial_transaction_lock():
                 return fn(*args)
         except Exception as exc:      # noqa: BLE001 - pyserial/minimalmodbus
             last_error = exc
@@ -514,8 +530,17 @@ def setCalibrating(value: bool):
 # ============================= CALIBRATION ==================================
 
 def _sample_counts(sample_grams, division):
-    """Sample weight expressed in divisions, per manual page 16."""
-    counts = int(round(sample_grams / division))
+    """Encode sample display digits, with grams converted to instrument units."""
+    import math
+
+    sample_grams = float(sample_grams)
+    if not math.isfinite(sample_grams) or sample_grams <= 0:
+        raise TLBCalibrationError("Sample weight must be finite and positive")
+    unit = getUnit()
+    if unit not in ("g", "kg"):
+        raise TLBCalibrationError("Calibration requires unit g or kg")
+    sample = sample_grams if unit == "g" else sample_grams / 1000.0
+    counts = int(round(sample / _weight_decimal_scale(division)))
     if counts <= 0:
         raise TLBCalibrationError(
             "sample weight {0} g is below one division ({1})".format(
@@ -571,6 +596,7 @@ def remote_calibration(step, args):
     division = _load_division()
 
     if step == 1:
+        _sample_counts(CALIB_SAMPLE_GRAMS, division)
         status = _read(inst, REG_STATUS, 1)[0]
         faults = _faults(status)
         if faults:
