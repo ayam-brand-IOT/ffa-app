@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "role": "weight",
+  "expected": {
+    "slave": 1,
+    "firmware_register": 11102,
+    "instrument_type_register": 105,
+    "unit": "g",
+    "division": 0.5
+  },
+  "keypad_targets": {
+    "full_scale_g": null,
+    "sensitivity_mv_v": null,
+    "max_display_g": null,
+    "filter": 4,
+    "anti_peak": "ON",
+    "power_on_zero_g": 0,
+    "zero_tracking": "NONE",
+    "resettable_zero_g": null,
+    "preset_tare_g": 0,
+    "display_coefficient": 1,
+    "protocol": "MODBUS-RTU",
+    "baudrate": 9600,
+    "data_bits": 8,
+    "parity": "N",
+    "stop_bits": 2,
+    "response_delay_ms": 0
+  }
+}

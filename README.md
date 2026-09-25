@@ -111,6 +111,29 @@ python3 tests/test_image_process_safety.py
 The last two suites require Eventlet and OpenCV/NumPy respectively. These
 hardware-free tests do not certify physical accuracy or firmware compatibility.
 
+## Reproducible Transmitter Setup
+
+Use `python3 tools/tlb_setup.py` for the keypad setup checklist. The tool can
+create a reusable target profile and verify fresh weight readings on each
+station through the running backend, without opening another serial connection
+or writing transmitter parameters. Capacity/sensitivity must come from the
+installed cell, and each assembled station needs its own zero and calibration.
+Keypad targets are not falsely reported as measured settings. See the English
+[Setup Guide](docs/TLB_SETUP.md) for commands, connection-output warnings,
+exit codes, and the unresolved post-power-cycle reference deviation.
+
+```sh
+python3 tools/tlb_setup.py
+python3 tools/tlb_setup.py init --profile /tmp/ffa-weight-profile.json
+python3 tools/tlb_setup.py check --profile /tmp/ffa-weight-profile.json \
+  --expected-g 0 --report /tmp/ffa-zero-check.json --ack-connection-outputs
+python3 tests/test_tlb_setup.py
+```
+
+Clear the laser area before the online check: the existing backend connection
+handler turns the laser on and the flash off. A passing automatic check does
+not certify the manual keypad settings or approve production use.
+
 ## Archivos principales
 
 ```text
@@ -324,6 +347,10 @@ docker run -p 3030:3030 -e DEV_MODE=true ffa-app
 El compose del repo raiz esta pensado para correrlo junto con `ffa-server`.
 
 ## Logs y documentacion adicional
+
+- [Calibration handoff: September 25, 2026](./docs/CALIBRATION_HANDOFF_2026-09-25.md):
+  latest debug-station measurements, zero repair, remaining failed power-cycle
+  reference check, deployment state, and next steps. Not production approval.
 
 Este modulo incluye documentacion especifica del subsistema de logs:
 

@@ -1,5 +1,9 @@
 # WTB Calibration Diagnostics
 
+For the later September 25 zero repair and latest power-cycle result, see
+[the calibration handoff](CALIBRATION_HANDOFF_2026-09-25.md). The original bench
+history below is retained; it is not the latest station measurement.
+
 ## Scope
 
 Diagnostic backend changes on top of `new_image_process_hugo_fix` (`4c0f900`).
