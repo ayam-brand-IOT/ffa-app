@@ -25,7 +25,10 @@ FLASH_FRAME_TIMEOUT = float(os.getenv("FLASH_FRAME_TIMEOUT", "0.35"))
 # Scale polling.  At 9600 baud 8N2 a read_registers round trip costs ~20 ms of
 # line time plus the instrument's own response delay, so the old 25 ms tension
 # period was asking for more than the bus can deliver and produced timeouts.
-WEIGHT_POLL_INTERVAL = float(os.getenv("WEIGHT_POLL_INTERVAL", "0.25"))
+# 0.1 s: HomeView captures on the first stable reading, and at 0.25 s that
+# reading arrived ~140 ms late on average. The bench sustained ~10 Hz
+# diagnostics (two transactions each) with no errors.
+WEIGHT_POLL_INTERVAL = float(os.getenv("WEIGHT_POLL_INTERVAL", "0.1"))
 TENSION_POLL_INTERVAL = float(os.getenv("TENSION_POLL_INTERVAL", "0.05"))
 SCALE_ERROR_BACKOFF = float(os.getenv("SCALE_ERROR_BACKOFF", "1.0"))
 CALIBRATION_LEASE_SECONDS = float(os.getenv("CALIBRATION_LEASE_SECONDS", "300"))
