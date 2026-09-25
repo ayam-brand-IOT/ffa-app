@@ -144,6 +144,11 @@ STALE_MAX_AGE_SECONDS = float(os.getenv("TLB_STALE_MAX_AGE_SECONDS", "2.0"))
 
 # Nominal sample weight used by the guided calibration, in grams.
 CALIB_SAMPLE_GRAMS = float(os.getenv("TLB_CALIB_SAMPLE_GRAMS", "1000.0"))
+# The WTB v1.19 status table conflicts with this driver's legacy masks.
+# Keep calibration read-only until the installed firmware has been checked.
+STATUS_MAP_VERIFIED = os.getenv("TLB_STATUS_MAP_VERIFIED", "false").lower() == "true"
+CALIB_VERIFY_TIMEOUT = 4.0
+CALIB_VERIFY_INTERVAL = 0.1
 
 # ============================= MODULE STATE =================================
 
@@ -165,6 +170,7 @@ _unit = None
 # Last good reading per slave, so a single dropped frame does not surface as a
 # zero or an exception in the UI.
 _last_good = {}
+_calibration_session = None
 
 
 class TLBCommunicationError(RuntimeError):
@@ -353,6 +359,50 @@ def getUnit():
     return _unit
 
 
+def readCalibrationDiagnostics(is_belly=False):
+    """Fresh, read-only transactions through the existing serial-port lock.
+
+    Do not use the stale cache or the synthetic idle snapshot during calibration.
+    Both candidate status maps are evidence, not automatic firmware detection.
+    """
+    inst = _for(is_belly)
+    # 40006 is write-only: never include it in a holding-register read.
+    identity = _read(inst, 0, 5)
+    words = identity + [None] + _read(inst, REG_STATUS, 8)
+    status = words[REG_STATUS]
+    raw_division = words[REG_DIVISIONS]
+    index = raw_division & 0xFF
+    if index >= len(_DIVISION_TABLE):
+        raise TLBCommunicationError("Invalid division in diagnostic snapshot")
+    unit_index = raw_division >> 8
+    division = _DIVISION_TABLE[index]
+    scale = _weight_decimal_scale(division)
+    gross = _apply_sign(words[7], words[8], status & ST_GROSS_NEGATIVE)
+    net = _apply_sign(words[9], words[10], status & ST_NET_NEGATIVE)
+    return {
+        "slave": inst.address,
+        "firmware_register": words[0], "instrument_type_register": words[1],
+        "registers_40001_40014": words,
+        "status_raw": status, "status_hex": "0x{0:04X}".format(status),
+        "division_register": raw_division, "division": division,
+        "unit": _UNIT_NAMES[unit_index] if unit_index < len(_UNIT_NAMES) else "?",
+        "counts_gross": gross, "counts_net": net,
+        "gross": round(gross * scale, 4), "net": round(net * scale, 4),
+        "gross_minus_net": round((gross - net) * scale, 4),
+        "faults": _faults(status),
+        "interpretation": "legacy", "status_map_verified": STATUS_MAP_VERIFIED,
+        "status_candidates": {
+            "legacy": {"stable": bool(status & ST_STABLE),
+                       "net_mode": bool(status & ST_NET_MODE),
+                       "near_zero": bool(status & ST_NEAR_ZERO)},
+            "wtb_1_19_table": {"stable": bool(status & (1 << 10)),
+                               "net_mode": bool(status & (1 << 9)),
+                               "near_zero": bool(status & (1 << 11))},
+        },
+        "captured_at": time.time(), "stale": False,
+    }
+
+
 # ============================= READING ======================================
 
 def _idle_snapshot():
@@ -523,20 +573,22 @@ def clearTare(is_belly=False):
 
 
 def setCalibrating(value: bool):
-    global isCalibrating
+    global isCalibrating, _calibration_session
     isCalibrating = bool(value)
+    if not isCalibrating:
+        _calibration_session = None
 
 
 # ============================= CALIBRATION ==================================
 
-def _sample_counts(sample_grams, division):
+def _sample_counts(sample_grams, division, unit=None):
     """Encode sample display digits, with grams converted to instrument units."""
     import math
 
     sample_grams = float(sample_grams)
     if not math.isfinite(sample_grams) or sample_grams <= 0:
         raise TLBCalibrationError("Sample weight must be finite and positive")
-    unit = getUnit()
+    unit = getUnit() if unit is None else unit
     if unit not in ("g", "kg"):
         raise TLBCalibrationError("Calibration requires unit g or kg")
     sample = sample_grams if unit == "g" else sample_grams / 1000.0
@@ -582,7 +634,82 @@ def _wait_for_stability(inst, timeout=4.0):
             timeout, last_status))
 
 
+def _require_verified_status_map():
+    if not STATUS_MAP_VERIFIED:
+        raise TLBCalibrationError(
+            "Calibration blocked: verify the installed firmware status map first; "
+            "use get_scale_diagnostics (no tare or calibration commands sent)")
+
+
+def _calibration_observe(stage, is_belly):
+    snapshot = readCalibrationDiagnostics(is_belly)
+    _log_calibration_snapshot(stage, snapshot)
+    return snapshot
+
+
+def _log_calibration_snapshot(stage, snapshot):
+    logEvent(etapa="CALIBRATION", status="INFO", additional_data={
+        "event_type": "calibration_diagnostic", "stage": stage,
+        "snapshot": snapshot,
+    })
+
+
+def _check_calibration_snapshot(snapshot, expected_config=None):
+    if snapshot["faults"]:
+        raise TLBCalibrationError("Instrument reports " + ", ".join(snapshot["faults"]))
+    # HomeView's existing contract is grams. Do not accept kg until the whole
+    # measurement/storage path is converted, even though the encoder supports it.
+    if snapshot["unit"] != "g":
+        raise TLBCalibrationError("Guided calibration currently requires instrument unit g")
+    if expected_config is not None and snapshot["division_register"] != expected_config:
+        raise TLBCalibrationError("Instrument configuration changed; restart calibration")
+    has_tare = (snapshot["status_candidates"]["legacy"]["net_mode"]
+                or abs(snapshot["gross_minus_net"]) > snapshot["division"])
+    if has_tare:
+        raise TLBCalibrationError(
+            "Active tare or NET/GROSS mismatch: gross={0}, net={1}. "
+            "No automatic tare reset was performed".format(snapshot["gross"], snapshot["net"]))
+
+
+def _verify_calibration_value(stage, is_belly, expected, config):
+    deadline = time.monotonic() + CALIB_VERIFY_TIMEOUT
+    consecutive = 0
+    while True:
+        snapshot = readCalibrationDiagnostics(is_belly)
+        try:
+            _check_calibration_snapshot(snapshot, config)
+        except TLBCalibrationError:
+            _log_calibration_snapshot(stage + "_failed", snapshot)
+            raise
+        tolerance = snapshot["division"]
+        valid = (snapshot["status_candidates"]["legacy"]["stable"]
+                 and abs(snapshot["gross"] - expected) <= tolerance
+                 and abs(snapshot["net"] - expected) <= tolerance)
+        consecutive = consecutive + 1 if valid else 0
+        if consecutive >= 3:
+            _log_calibration_snapshot(stage, snapshot)
+            return snapshot
+        if time.monotonic() >= deadline:
+            _log_calibration_snapshot(stage + "_failed", snapshot)
+            raise TLBCalibrationError(
+                "{0}: expected {1} g (+/- {2}), gross={3}, net={4}; "
+                "calibration is not validated".format(
+                    stage, expected, tolerance, snapshot["gross"], snapshot["net"]))
+        time.sleep(CALIB_VERIFY_INTERVAL)
+
+
 def remote_calibration(step, args):
+    """Abort a failed sequence; never replay a possibly executed command."""
+    global _calibration_session, isCalibrating
+    try:
+        return _remote_calibration_step(step, args)
+    except Exception:
+        _calibration_session = None
+        isCalibrating = False
+        raise
+
+
+def _remote_calibration_step(step, args):
     """Guided calibration driven by calibrateScale.vue (steps 1..4).
 
     1  start           - check the instrument is healthy, no write
@@ -590,45 +717,62 @@ def remote_calibration(step, args):
     3  known sample    - write 40037/40038 then command 101, then verify
     4  finish          - command 99, persist to EEPROM
     """
-    global isCalibrating
+    global isCalibrating, _calibration_session
+    if type(step) is not int or step not in (1, 2, 3, 4) or args not in ("weight", "belly"):
+        raise TLBCalibrationError("Invalid calibration step or instrument")
     is_belly = (args == "belly")
     inst = _for(is_belly)
-    division = _load_division()
+    _require_verified_status_map()
+    if step == 1 and _calibration_session is not None:
+        raise TLBCalibrationError("Calibration already started; cancel before restarting")
+    if step != 1 and (_calibration_session is None
+                      or _calibration_session["next_step"] != step
+                      or _calibration_session["args"] != args):
+        raise TLBCalibrationError("Out-of-order calibration step; restart from step 1")
+    before = _calibration_observe("before_step_{0}".format(step), is_belly)
+    config = before["division_register"] if step == 1 else _calibration_session["config"]
+    _check_calibration_snapshot(before, config)
+    division = before["division"]
+    sample = CALIB_SAMPLE_GRAMS if step == 1 else _calibration_session["sample_grams"]
+    counts = _sample_counts(sample, division, unit=before["unit"])
 
     if step == 1:
-        _sample_counts(CALIB_SAMPLE_GRAMS, division)
-        status = _read(inst, REG_STATUS, 1)[0]
-        faults = _faults(status)
-        if faults:
-            raise TLBCalibrationError(
-                "cannot calibrate, instrument reports " + ", ".join(faults))
-        print("Calibration start, status 0x{0:04X}".format(status))
+        _calibration_session = {"next_step": 2, "args": args, "config": config,
+                                "sample_grams": sample}
+        return before
 
     elif step == 2:
         print("Tare weight zero setting")
         _wait_for_stability(inst)
         _write_command(inst, CMD_CALIB_TARE)
+        after = _verify_calibration_value("after_zero", is_belly, 0.0, config)
 
     elif step == 3:
-        counts = _sample_counts(CALIB_SAMPLE_GRAMS, division)
+        if before["gross"] <= division:
+            raise TLBCalibrationError("No positive reference load detected; calibration not written")
         print("Saving calibration point: {0} g = {1} counts".format(
-            CALIB_SAMPLE_GRAMS, counts))
+            sample, counts))
         _wait_for_stability(inst)
         _write_sample_weight(inst, counts)
         _write_command(inst, CMD_SAVE_FIRST)
         _verify_sample_consumed(inst)
+        after = _verify_calibration_value("after_reference", is_belly, sample, config)
 
     elif step == 4:
+        _verify_calibration_value("before_save", is_belly, sample, config)
         print("Persisting calibration to EEPROM")
         _write_command(inst, CMD_SAVE_EEPROM)
+        after = _verify_calibration_value("after_save", is_belly, sample, config)
+        _calibration_session = None
         isCalibrating = False
-
-    else:
-        raise TLBCalibrationError("unknown calibration step {0}".format(step))
+        return after
+    _calibration_session["next_step"] = step + 1
+    return after
 
 
 def add_calibration_point(sample_grams, is_belly=False):
     """Add a linearisation point (command 106). Up to 8 points, manual p.16."""
+    _require_verified_status_map()
     inst = _for(is_belly)
     counts = _sample_counts(sample_grams, _load_division())
     _wait_for_stability(inst)
@@ -639,11 +783,13 @@ def add_calibration_point(sample_grams, is_belly=False):
 
 def cancel_calibration(is_belly=False):
     """Drop the real calibration and fall back to the theoretical one."""
+    _require_verified_status_map()
     _write_command(_for(is_belly), CMD_CALIB_CANCEL)
 
 
 def physical_calibration():
     """Interactive console calibration, for bench work over SSH."""
+    _require_verified_status_map()
     division = getDivision()
     print("Division configured on the instrument: {0} ({1})".format(
         division, getUnit()))

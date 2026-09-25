@@ -92,9 +92,14 @@ class FakeInstrument:
     def write_register(self, address, value):
         if address == 5:
             self.commands.append(value)
+            if value == 100:
+                self.set_gross(0)
+                self.set_net(0)
             # Manual p.16: a successful save zeroes the sample weight pair.
             if value in (101, 106):
                 self.saved_samples.append((self.registers[36] << 16) | self.registers[37])
+                self.set_gross(self.saved_samples[-1])
+                self.set_net(self.saved_samples[-1])
                 self.registers[36] = 0
                 self.registers[37] = 0
         else:
@@ -138,7 +143,13 @@ def check(label, actual, expected):
 
 def reset():
     tlb._last_good.clear()
-    tlb.isCalibrating = False
+    tlb.setCalibrating(False)
+    # This fake explicitly models the legacy masks; physical hardware is not
+    # considered verified merely because these tests pass.
+    tlb.STATUS_MAP_VERIFIED = True
+    for inst in (tlb.instrument, tlb.instrument2):
+        inst.commands.clear()
+        inst.saved_samples.clear()
     for bank in FakeInstrument.banks.values():
         bank[:] = FakeInstrument._fresh_bank()
 
@@ -272,10 +283,11 @@ def test_calibration_sequence():
     tlb.remote_calibration(2, "weight")
     check("step 2 sends command 100", tlb.instrument.commands, [100])
 
+    tlb.instrument.set_gross(9960)
+    tlb.instrument.set_net(9960)
     tlb.remote_calibration(3, "weight")
     check("step 3 sends command 101", tlb.instrument.commands, [100, 101])
     check("1 kg sample encoded as display digits", tlb.instrument.saved_samples, [10000])
-    tlb.instrument.set_net(tlb.instrument.saved_samples[0])
     check("calibrated 1 kg reads back as 1000 g", tlb.readWeight(), 1000.0)
 
     tlb.remote_calibration(4, "weight")
@@ -289,6 +301,10 @@ def test_calibration_rejects_a_silent_failure():
     reset()
     tlb._division = None
     tlb.instrument.set_stable(True)
+    tlb.remote_calibration(1, "weight")
+    tlb.remote_calibration(2, "weight")
+    tlb.instrument.set_gross(9960)
+    tlb.instrument.set_net(9960)
 
     # Firmware that ignores command 101: the sample registers stay set.
     original = FakeInstrument.write_register

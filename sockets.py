@@ -45,6 +45,8 @@ _poller_started = False
 _poller_task = None
 _calibration_owner_sid = None
 _calibration_last_activity = 0.0
+_calibration_inflight = False
+_calibration_release_pending = False
 
 
 class CalibrationBusyError(RuntimeError):
@@ -53,7 +55,7 @@ class CalibrationBusyError(RuntimeError):
 
 def _release_calibration(sid=None, force=False):
     """Release the calibration lease and resume weight polling."""
-    global _calibration_owner_sid, _calibration_last_activity
+    global _calibration_owner_sid, _calibration_last_activity, _calibration_release_pending
 
     if _calibration_owner_sid is None:
         if force:
@@ -61,17 +63,23 @@ def _release_calibration(sid=None, force=False):
         return None
     if not force and sid != _calibration_owner_sid:
         return None
+    if _calibration_inflight:
+        _calibration_release_pending = True
+        return None
 
     released_owner = _calibration_owner_sid
     _calibration_owner_sid = None
     _calibration_last_activity = 0.0
+    _calibration_release_pending = False
+    _last_snapshot["weight"] = None
+    _last_snapshot["tension"] = None
     net.setCalibrating(False)
     return released_owner
 
 
 def _expire_calibration_if_needed():
     """Expire an abandoned calibration without affecting another client."""
-    if _calibration_owner_sid is None:
+    if _calibration_owner_sid is None or _calibration_inflight:
         return False
     if time.monotonic() - _calibration_last_activity < CALIBRATION_LEASE_SECONDS:
         return False
@@ -96,6 +104,8 @@ def _claim_calibration(sid):
     global _calibration_owner_sid, _calibration_last_activity
 
     _expire_calibration_if_needed()
+    if _calibration_inflight:
+        raise CalibrationBusyError("Hay un paso de calibracion en curso")
     if _calibration_owner_sid not in (None, sid):
         raise CalibrationBusyError("Otra sesion ya esta calibrando la bascula")
     _calibration_owner_sid = sid
@@ -262,24 +272,38 @@ def on_disconnect():
 
 @socketio.event
 def calibrate_load_cell(data):
+    global _calibration_inflight
     sid = request.sid
+    owns_operation = False
+    error_context = {key: data.get(key) if isinstance(data, dict) else None
+                     for key in ("step", "args", "request_id")}
     try:
         if not isinstance(data, dict):
             raise ValueError("Los datos de calibracion deben ser un objeto")
         step = data['step']
         args = data['args']
+        if type(step) is not int or step not in (1, 2, 3, 4) or args not in ("weight", "belly"):
+            raise ValueError("Paso o instrumento de calibracion invalido")
         _claim_calibration(sid)
+        _calibration_inflight = True
+        owns_operation = True
 
         with thread_lock:
+            if _calibration_release_pending:
+                raise RuntimeError("Calibracion cancelada antes de iniciar el paso")
             print("calibrate load cell step:", step, " args:", args)
-            net.remote_calibration(step, args)
+            diagnostic = net.remote_calibration(step, args)
+            if _calibration_release_pending:
+                raise RuntimeError("Calibracion interrumpida; un comando pudo haberse aplicado. Revisar el estado antes de reiniciar")
             logEvent(
                 etapa="CALIBRATION", status="SUCCESS",
                 additional_data={"calibration_type": "load_cell", "step": step, "args": args},
             )
         if step == 4:
             _release_calibration(sid=sid)
-        emit('calibration_step_commited', "step commited")
+        emit('calibration_step_commited', {"step": step, "args": args,
+                                          "request_id": data.get("request_id"),
+                                          "diagnostic": diagnostic})
     except CalibrationBusyError as exc:
         logEvent(
             etapa="CALIBRATION",
@@ -288,7 +312,7 @@ def calibrate_load_cell(data):
             error_msg=str(exc),
             additional_data={"request_sid": sid},
         )
-        emit('calibration_error', {"error": str(exc)})
+        emit('calibration_error', {"error": str(exc), **error_context})
     except Exception as e:
         # Never leave isCalibrating latched on: readWeight() returns 0 while it
         # is set, so a failed step used to freeze the weight display at zero
@@ -301,7 +325,38 @@ def calibrate_load_cell(data):
                              "step": data.get('step') if isinstance(data, dict) else None,
                              "args": data.get('args') if isinstance(data, dict) else None},
         )
-        emit('calibration_error', {"error": str(e)})
+        emit('calibration_error', {"error": str(e), **error_context})
+    finally:
+        if owns_operation:
+            _calibration_inflight = False
+            if _calibration_release_pending:
+                _release_calibration(sid=sid)
+
+
+@socketio.event
+def get_scale_diagnostics(data=None):
+    """Read raw evidence through the backend's existing Modbus connection."""
+    try:
+        if data is not None and not isinstance(data, dict):
+            raise ValueError("Invalid diagnostic request")
+        mode = (data or {}).get("mode", "weight")
+        if mode not in ("weight", "belly"):
+            raise ValueError("Invalid instrument")
+        if _calibration_owner_sid is not None:
+            raise CalibrationBusyError("Diagnostico disponible al terminar o cancelar la calibracion")
+        reader = getattr(net, "readCalibrationDiagnostics", None)
+        if reader is None:
+            raise RuntimeError("Raw Modbus diagnostics unavailable in DEV_MODE")
+        emit("scale_diagnostics", reader(mode == "belly"))
+    except Exception as exc:
+        emit("scale_diagnostics_error", {"error": str(exc)})
+
+
+def _hardware_change_allowed():
+    if _calibration_owner_sid is not None:
+        emit("calibration_error", {"error": "No se permite cambiar tara, cero o modo durante la calibracion"})
+        return False
+    return True
 
 
 @socketio.event
@@ -317,31 +372,51 @@ def resume_net_update(data=None):
 def enter_to_tension_test(data=None):
     # This used to only print, so READING_MODE never left weight mode and the
     # belly view had to poll get_tension by hand.
+    if not _hardware_change_allowed():
+        return
     with thread_lock:
+        if not _hardware_change_allowed():
+            return
         net.enterToTensionTest()
 
 
 @socketio.event
 def enter_to_weight_mode(data=None):
+    if not _hardware_change_allowed():
+        return
     with thread_lock:
+        if not _hardware_change_allowed():
+            return
         net.enterToWeightMode()
 
 
 @socketio.event
 def set_zero(data=None):
+    if not _hardware_change_allowed():
+        return
     with thread_lock:
+        if not _hardware_change_allowed():
+            return
         net.setZero(bool(data))
 
 
 @socketio.event
 def set_tare(data=None):
+    if not _hardware_change_allowed():
+        return
     with thread_lock:
+        if not _hardware_change_allowed():
+            return
         net.setTare(bool(data))
 
 
 @socketio.event
 def clear_tare(data=None):
+    if not _hardware_change_allowed():
+        return
     with thread_lock:
+        if not _hardware_change_allowed():
+            return
         net.clearTare(bool(data))
 
 

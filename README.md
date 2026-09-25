@@ -21,6 +21,96 @@ reconstruir la imagen Docker y recrear el contenedor: reiniciarlo solamente
 no instala la nueva imagen. Conservar la configuracion y las muestras antes
 de reemplazar un contenedor sin volumenes persistentes.
 
+## Calibration Diagnostics Branch
+
+`codex/calibration-diagnostics` builds on `new_image_process_hugo_fix`
+(`4c0f900`). This is a **diagnostic backend branch, not a production-approved
+calibration release**. It does not modify the frontend, `ffa-server`, or the
+parent repository.
+
+### Changes
+
+- Added `get_scale_diagnostics` for fresh raw registers, firmware/type IDs,
+  status bits, unit/division, NET, GROSS, and their difference. It uses the
+  backend's existing serial connection and never reads the write-only command
+  register or substitutes stale data for a failed diagnostic read.
+- Added `TLB_STATUS_MAP_VERIFIED`, defaulting to `false`. Calibration entry
+  points are blocked until the installed status map is verified; ordinary
+  weight polling remains available. This flag does not select another map.
+- Enforced ordered calibration steps for the same instrument, using its own
+  unit/division rather than the primary scale's cached settings. The guided
+  workflow accepts grams only and rejects instrument faults, active tare,
+  missing reference loads, and configuration changes.
+- Added fresh NET/GROSS checks after calibration zero (`100`), after the first
+  reference (`101`), and before/after EEPROM save (`99`). Consumed sample
+  registers alone are no longer treated as proof of successful calibration.
+- Added correlated calibration replies (`step`, `args`, `request_id`, and a
+  diagnostic snapshot), rejected overlapping operations, and deferred session
+  release until an in-flight command finishes after disconnect/cancellation.
+  Tare, operational zero, and mode changes are blocked during a session.
+- Added hardware-free regressions for the original NET/GROSS mismatch, ignored
+  commands, stale reads, invalid sequences, ownership/cancellation, observed
+  status words, and the one-gram reference deviation.
+
+The inherited decimal encoding and single-attempt command writes are retained.
+With division `0.5 g`, register value `10000` represents `1000.0 g`, not 5000 g.
+A lost command response is never automatically replayed, and an applied
+hardware command is not rolled back merely because a later check fails.
+
+### Bench Results and Remaining Limits
+
+Supervised tests took place on the debugging station on September 24, 2026
+(America/Tijuana; some evidence timestamps are September 25 UTC). The permanent
+lamp/frame remained installed. The bottle was assigned a 1000 g reference;
+its actual mass has not been independently certified.
+
+| Observation | GROSS (g) | NET (g) |
+| --- | ---: | ---: |
+| Initial fault, bottle installed | 1000.0 | 883.5 |
+| Structure only, after explicitly clearing semi-automatic tare (`9`) | 117.0 | 117.0 |
+| Structure only, after calibration zero (`100`) | 0.0 | 0.0 |
+| Bottle immediately before setting the reference | 886.0 | 886.0 |
+| Bottle after reference (`101`), reloading, and save (`99`) | 1000.0 | 1000.0 |
+| Structure only after reference, before power cycling | -0.5 | -0.5 |
+| Bottle after operator-reported transmitter power cycle, 30 stable readings | 999.0 | 999.0 |
+| Structure only after that power cycle, 30 stable readings | 0.0 | 0.0 |
+
+Commands `100`, `101`, and `99` were each sent once and acknowledged. Reference
+registers were read back as `[0, 10000]` before `101` and `[0, 0]` afterward.
+These were supervised, isolated serial operations with the normal backend
+paused and restored, **not an end-to-end validation of the UI wizard**.
+
+Post-restart readings are consistent with retained calibration, but **999.0 g
+is two divisions below the assigned reference**, outside the guided workflow's
+one-division (`+/-0.5 g`) check. Its cause remains unresolved; returning to zero
+does not explain or waive that deviation. No corrective tare or recalibration
+was applied to hide it. Absolute accuracy and production readiness are not
+established by this test.
+
+Keep `TLB_STATUS_MAP_VERIFIED=false` on the diagnostic deployment. The current
+frontend still needs correlated reply/error handling and must not announce
+completion before the save step succeeds. See
+[Calibration Diagnostics](docs/CALIBRATION_DIAGNOSTICS.md) for status-map
+evidence, the test sequence, deployment precautions, and remaining work.
+
+### Focused Regression Tests
+
+Run each script in a separate process because some fixtures install mock
+modules in `sys.modules`:
+
+```bash
+python3 tests/test_calibration_diagnostics.py
+python3 tests/test_calibration_socket_guard.py
+python3 tests/test_tlb_registers.py
+python3 tests/test_tlb_safety.py
+python3 tests/test_socket_availability.py
+python3 tests/test_scale_controls.py
+python3 tests/test_image_process_safety.py
+```
+
+The last two suites require Eventlet and OpenCV/NumPy respectively. These
+hardware-free tests do not certify physical accuracy or firmware compatibility.
+
 ## Archivos principales
 
 ```text
@@ -94,6 +184,7 @@ El transmisor de peso (TLB, Modbus-RTU) acepta:
 - `TLB_RETRY_DELAY`: back-off entre reintentos. Valor por defecto: `0.02`
 - `TLB_STALE_MAX_AGE_SECONDS`: antiguedad maxima de un peso reutilizable tras perder comunicacion. Valor por defecto: `2.0`
 - `TLB_CALIB_SAMPLE_GRAMS`: peso patron de la calibracion guiada. Valor por defecto: `1000.0`
+- `TLB_STATUS_MAP_VERIFIED`: explicit confirmation of the installed legacy status map; default `false`. Do not enable merely to bypass the calibration gate.
 - `WEIGHT_POLL_INTERVAL`: periodo de muestreo de peso. Valor por defecto: `0.25`
 - `TENSION_POLL_INTERVAL`: periodo de muestreo de tension. Valor por defecto: `0.05`
 - `SCALE_ERROR_BACKOFF`: espera tras un error de lectura. Valor por defecto: `1.0`
@@ -173,6 +264,7 @@ Nota importante: el repo actual solo trae `ffa-app/dist/.gitkeep`. Para servir l
 - `update_net`
 - `get_tension`
 - `get_scale_status`
+- `get_scale_diagnostics` - fresh raw-register diagnostics using the existing serial connection
 - `get_analysis_data`
 - `capture`
 - `reset`
@@ -186,6 +278,7 @@ Nota importante: el repo actual solo trae `ffa-app/dist/.gitkeep`. Para servir l
 - `tension_update`
 - `scale_status` — valor, estabilidad (bit 11 del STATUS REGISTER) y fallas del instrumento
 - `scale_error` — el poller no pudo leer el transmisor
+- `scale_diagnostics` / `scale_diagnostics_error` - fresh diagnostic result or explicit failure
 - `frame_ready`
 - `analysis_data`
 - `analysis_error` — el analisis no produjo una medicion valida; la UI **no** debe

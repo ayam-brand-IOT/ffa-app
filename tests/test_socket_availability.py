@@ -84,6 +84,9 @@ import sockets  # noqa: E402
 def reset_state():
     sockets._calibration_owner_sid = None
     sockets._calibration_last_activity = 0.0
+    sockets._calibration_inflight = False
+    sockets._calibration_release_pending = False
+    sockets._last_snapshot = {"weight": None, "tension": None}
     sockets._poller_started = False
     sockets._poller_task = None
     socketio.emitted.clear()
