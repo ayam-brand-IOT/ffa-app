@@ -48,6 +48,30 @@ class CalibrationDiagnosticsTests(unittest.TestCase):
                 action()
         self.assertEqual(tlb.instrument.commands, [])
 
+    def test_per_slave_unlock_requires_listed_slave_and_bench_firmware(self):
+        tlb.STATUS_MAP_VERIFIED = False
+        with patch.object(tlb, "STATUS_MAP_VERIFIED_SLAVES", frozenset({1})):
+            # Listed slave, but firmware differs from the bench-checked unit.
+            with self.assertRaisesRegex(tlb.TLBCalibrationError, "verify"):
+                tlb.remote_calibration(1, "weight")
+            self.assertFalse(tlb.readCalibrationDiagnostics()["status_map_verified"])
+
+            for inst in (tlb.instrument, tlb.instrument2):
+                inst.registers[0], inst.registers[1] = tlb.VERIFIED_FIRMWARE
+            self.assertTrue(tlb.readCalibrationDiagnostics()["status_map_verified"])
+            tlb.remote_calibration(1, "weight")
+            tlb.setCalibrating(False)
+
+            # Slave 2 (belly) is not listed: blocked even with matching firmware.
+            self.assertFalse(tlb.readCalibrationDiagnostics(True)["status_map_verified"])
+            for action in (lambda: tlb.remote_calibration(1, "belly"),
+                           lambda: tlb.add_calibration_point(1000, is_belly=True),
+                           lambda: tlb.cancel_calibration(is_belly=True)):
+                with self.assertRaisesRegex(tlb.TLBCalibrationError, "verify"):
+                    action()
+        self.assertEqual(tlb.instrument.commands, [])
+        self.assertEqual(tlb.instrument2.commands, [])
+
     def test_diagnostics_read_real_registers_while_polling_is_paused(self):
         tlb.setCalibrating(True)
         tlb.instrument.set_gross(1165)

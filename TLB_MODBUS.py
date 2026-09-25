@@ -144,9 +144,17 @@ STALE_MAX_AGE_SECONDS = float(os.getenv("TLB_STALE_MAX_AGE_SECONDS", "2.0"))
 
 # Nominal sample weight used by the guided calibration, in grams.
 CALIB_SAMPLE_GRAMS = float(os.getenv("TLB_CALIB_SAMPLE_GRAMS", "1000.0"))
-# The WTB v1.19 status table conflicts with this driver's legacy masks.
+# The WTB v1.19 status table (page 18) conflicts with this driver's legacy masks.
 # Keep calibration read-only until the installed firmware has been checked.
+# TLB_STATUS_MAP_VERIFIED=true unlocks every slave; TLB_STATUS_MAP_VERIFIED_SLAVES
+# (e.g. "1") unlocks only the listed slaves, and only while they still report
+# the firmware/type IDs of the unit checked on the bench.
 STATUS_MAP_VERIFIED = os.getenv("TLB_STATUS_MAP_VERIFIED", "false").lower() == "true"
+STATUS_MAP_VERIFIED_SLAVES = frozenset(
+    int(s) for s in os.getenv("TLB_STATUS_MAP_VERIFIED_SLAVES", "").split(",") if s.strip())
+# 2026-09-25 debug station, slave 1: 0x0980/0x0C80/0x0800/0x0000 readings match
+# the legacy masks (bits 7, 8, 10, 11); bit 12 (near zero) was never observed.
+VERIFIED_FIRMWARE = (11102, 105)
 CALIB_VERIFY_TIMEOUT = 4.0
 CALIB_VERIFY_INTERVAL = 0.1
 
@@ -390,7 +398,8 @@ def readCalibrationDiagnostics(is_belly=False):
         "gross": round(gross * scale, 4), "net": round(net * scale, 4),
         "gross_minus_net": round((gross - net) * scale, 4),
         "faults": _faults(status),
-        "interpretation": "legacy", "status_map_verified": STATUS_MAP_VERIFIED,
+        "interpretation": "legacy",
+        "status_map_verified": _status_map_verified(is_belly, words[0], words[1]),
         "status_candidates": {
             "legacy": {"stable": bool(status & ST_STABLE),
                        "net_mode": bool(status & ST_NET_MODE),
@@ -634,8 +643,20 @@ def _wait_for_stability(inst, timeout=4.0):
             timeout, last_status))
 
 
-def _require_verified_status_map():
-    if not STATUS_MAP_VERIFIED:
+def _status_map_verified(is_belly, firmware=None, instrument_type=None):
+    """Firmware IDs are required for a per-slave unlock; None reads them."""
+    if STATUS_MAP_VERIFIED:
+        return True
+    inst = _for(is_belly)
+    if inst.address not in STATUS_MAP_VERIFIED_SLAVES:
+        return False
+    if firmware is None:
+        firmware, instrument_type = _read(inst, 0, 2)
+    return (firmware, instrument_type) == VERIFIED_FIRMWARE
+
+
+def _require_verified_status_map(is_belly=False):
+    if not _status_map_verified(is_belly):
         raise TLBCalibrationError(
             "Calibration blocked: verify the installed firmware status map first; "
             "use get_scale_diagnostics (no tare or calibration commands sent)")
@@ -722,7 +743,7 @@ def _remote_calibration_step(step, args):
         raise TLBCalibrationError("Invalid calibration step or instrument")
     is_belly = (args == "belly")
     inst = _for(is_belly)
-    _require_verified_status_map()
+    _require_verified_status_map(is_belly)
     if step == 1 and _calibration_session is not None:
         raise TLBCalibrationError("Calibration already started; cancel before restarting")
     if step != 1 and (_calibration_session is None
@@ -772,7 +793,7 @@ def _remote_calibration_step(step, args):
 
 def add_calibration_point(sample_grams, is_belly=False):
     """Add a linearisation point (command 106). Up to 8 points, manual p.16."""
-    _require_verified_status_map()
+    _require_verified_status_map(is_belly)
     inst = _for(is_belly)
     counts = _sample_counts(sample_grams, _load_division())
     _wait_for_stability(inst)
@@ -783,7 +804,7 @@ def add_calibration_point(sample_grams, is_belly=False):
 
 def cancel_calibration(is_belly=False):
     """Drop the real calibration and fall back to the theoretical one."""
-    _require_verified_status_map()
+    _require_verified_status_map(is_belly)
     _write_command(_for(is_belly), CMD_CALIB_CANCEL)
 
 

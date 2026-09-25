@@ -208,6 +208,7 @@ El transmisor de peso (TLB, Modbus-RTU) acepta:
 - `TLB_STALE_MAX_AGE_SECONDS`: antiguedad maxima de un peso reutilizable tras perder comunicacion. Valor por defecto: `2.0`
 - `TLB_CALIB_SAMPLE_GRAMS`: peso patron de la calibracion guiada. Valor por defecto: `1000.0`
 - `TLB_STATUS_MAP_VERIFIED`: explicit confirmation of the installed legacy status map; default `false`. Do not enable merely to bypass the calibration gate.
+- `TLB_STATUS_MAP_VERIFIED_SLAVES`: comma-separated slaves whose status map was verified (e.g. `1`); only unlocks them while they report firmware/type `11102/105`. See [Calibration Diagnostics](docs/CALIBRATION_DIAGNOSTICS.md).
 - `WEIGHT_POLL_INTERVAL`: periodo de muestreo de peso. Valor por defecto: `0.25`
 - `TENSION_POLL_INTERVAL`: periodo de muestreo de tension. Valor por defecto: `0.05`
 - `SCALE_ERROR_BACKOFF`: espera tras un error de lectura. Valor por defecto: `1.0`

@@ -19,6 +19,27 @@ mode, stability, and near-zero behavior against the legacy decoder. The flag
 does not select the WTB v1.19 table. It is process-wide; verify every slave
 that will be calibrated, not just the primary scale.
 
+`TLB_STATUS_MAP_VERIFIED_SLAVES` (for example `1`) unlocks only the listed
+slaves, and only while each still reports firmware/type `11102/105`, the IDs of
+the bench-checked unit. Any other slave or firmware stays blocked.
+
+### Status Map Evidence (2026-09-25, slave 1, firmware 11102/105)
+
+Raw status words read on the debug station contradict the WTB v1.19 table on
+page 18 and match the legacy masks for bits 7, 8, 10 and 11:
+
+| Status | Reading | Legacy decoding | v1.19 page 18 decoding |
+| --- | --- | --- | --- |
+| `0x0980` | -997.5 / -997.5 g, no tare | gross-, net-, stable | "near zero" at -997 g |
+| `0x0C80` | NET 0.0 / GROSS -998.0 g, tare active | gross-, NET mode, stable | "net negative" at NET 0, no NET-mode bit |
+| `0x0800` | 1000.0 / 1000.0 g | stable | "near zero" at 1000 g |
+| `0x0000` | 998.5 g while settling | not stable | - |
+
+Page 27 of the same document lists NET mode/stability/near zero on bits
+10/11/12, as the legacy decoder does. Bit 12 (near zero) was never observed,
+even at 0.0 g (`0x0800`); guided calibration does not use it. Fault bits 0-5
+agree in both tables but were not exercised. Slave 2 (belly test) is unverified.
+
 ## Initial Failure
 
 Observed on the debugging station on September 24, 2026 (America/Tijuana):
