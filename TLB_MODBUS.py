@@ -157,6 +157,7 @@ STATUS_MAP_VERIFIED_SLAVES = frozenset(
 VERIFIED_FIRMWARE = (11102, 105)
 CALIB_VERIFY_TIMEOUT = 4.0
 CALIB_VERIFY_INTERVAL = 0.1
+CALIB_SAMPLE_ACCEPT_TIMEOUT = 5.0
 
 # ============================= MODULE STATE =================================
 
@@ -617,13 +618,27 @@ def _write_sample_weight(inst, counts):
 
 
 def _verify_sample_consumed(inst):
-    """Manual page 16: on success the instrument zeroes 40037/40038."""
-    time.sleep(0.15)
-    high, low = _read(inst, REG_SAMPLE_WEIGHT, 2)
-    if high or low:
-        raise TLBCalibrationError(
-            "instrument did not accept the sample weight "
-            "(40037={0}, 40038={1} still set)".format(high, low))
+    """Manual page 21: on success the instrument zeroes 40037/40038.
+
+    The bench unit (11102/105) clears them well after 0.15 s and applied the
+    sample even when an early read still showed it, so poll for the whole
+    CALIB_SAMPLE_ACCEPT_TIMEOUT and tolerate no answer while it is busy.
+    """
+    deadline = time.monotonic() + CALIB_SAMPLE_ACCEPT_TIMEOUT
+    high = low = None
+    while True:
+        time.sleep(CALIB_VERIFY_INTERVAL)
+        try:
+            high, low = _read(inst, REG_SAMPLE_WEIGHT, 2)
+        except TLBCommunicationError:
+            pass
+        else:
+            if not high and not low:
+                return
+        if time.monotonic() >= deadline:
+            raise TLBCalibrationError(
+                "instrument did not accept the sample weight within {0}s "
+                "(40037={1}, 40038={2})".format(CALIB_SAMPLE_ACCEPT_TIMEOUT, high, low))
 
 
 def _wait_for_stability(inst, timeout=4.0):

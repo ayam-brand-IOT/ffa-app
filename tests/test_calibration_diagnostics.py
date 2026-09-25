@@ -72,6 +72,59 @@ class CalibrationDiagnosticsTests(unittest.TestCase):
         self.assertEqual(tlb.instrument.commands, [])
         self.assertEqual(tlb.instrument2.commands, [])
 
+    def test_slow_sample_consumption_is_accepted(self):
+        # Bench unit 11102/105 clears 40037/40038 well after the first read and
+        # may not answer while it processes command 101.
+        inst = tlb.instrument
+        original_read = tlb._read
+        state = {"pending": None, "reads": 0}
+
+        def slow_write(address, value):
+            sample = (inst.registers[36], inst.registers[37])
+            FakeInstrument.write_register(inst, address, value)
+            if address == 5 and value == 101:
+                state["pending"] = sample
+                inst.registers[36], inst.registers[37] = sample
+
+        def slow_read(target, address, count):
+            if target is inst and address == tlb.REG_SAMPLE_WEIGHT and state["pending"]:
+                state["reads"] += 1
+                if state["reads"] == 2:
+                    raise tlb.TLBCommunicationError("busy")
+                if state["reads"] >= 4:
+                    inst.registers[36] = inst.registers[37] = 0
+                    state["pending"] = None
+            return original_read(target, address, count)
+
+        with patch.object(tlb, "CALIB_SAMPLE_ACCEPT_TIMEOUT", 1.0), \
+                patch.object(inst, "write_register", slow_write), \
+                patch.object(tlb, "_read", slow_read):
+            self.begin()
+            self.load_reference()
+            tlb.remote_calibration(3, "weight")
+        self.assertEqual(inst.commands, [100, 101])
+        self.assertGreaterEqual(state["reads"], 4)
+
+    def test_sample_never_consumed_still_fails(self):
+        inst = tlb.instrument
+
+        def ignore_101(address, value):
+            if address == 5:
+                inst.commands.append(value)
+                if value == 100:
+                    inst.set_gross(0)
+                    inst.set_net(0)
+            else:
+                inst.registers[address] = value
+
+        with patch.object(tlb, "CALIB_SAMPLE_ACCEPT_TIMEOUT", 0.05), \
+                patch.object(inst, "write_register", ignore_101):
+            self.begin()
+            self.load_reference()
+            with self.assertRaisesRegex(tlb.TLBCalibrationError, "did not accept"):
+                tlb.remote_calibration(3, "weight")
+        self.assertEqual(inst.commands, [100, 101])
+
     def test_diagnostics_read_real_registers_while_polling_is_paused(self):
         tlb.setCalibrating(True)
         tlb.instrument.set_gross(1165)
