@@ -24,8 +24,8 @@ settings from the debugging transmitter and not a profile for the belly test.
 | `FS-tEO` | Unset: actual rated system capacity in grams | Cell datasheet and keypad |
 | `SEnSib` | Unset: actual sensitivity in mV/V | Cell datasheet and keypad |
 | `MASS` | Unset: reviewed maximum display value | Keypad; 0 disables this limit |
-| `FiLtEr` | 4, a starting point for static weighing | Keypad and application-specific settling test |
-| Anti-peak | ON | Keypad; unsuitable as a blanket setting for transient-force tests |
+| `FiLtEr` | 3 (425 ms response), see settling test below | Keypad and application-specific settling test |
+| Anti-peak | ON | Keypad; not offered after `FiLtEr` on the 11102/105 debug unit. Unsuitable as a blanket setting for transient-force tests |
 | `AUTO 0` | 0, disabled | Keypad |
 | `TRAC 0` | NONE, disabled for this diagnostic baseline | Keypad |
 | `0 SEt` | Unset: reviewed operational zero range in grams/ | Keypad; account for decimal places |
@@ -131,6 +131,21 @@ weight, and failures. They always distinguish `automatic_check_passed` from
 `keypad_settings_verified: false` and `production_ready: false`. A single
 passing load window cannot establish all manual settings, calibration quality,
 or absolute accuracy. Reports and profiles are never overwritten automatically.
+
+## Settling Test (2026-09-25, debug unit 11102/105)
+
+HomeView captures on the transmitter's stability bit, so the filter sets the
+wait after the load stops moving. Read-only `get_scale_diagnostics` sampling
+at ~6-10 Hz, time from the value holding within one division to the bit:
+
+| `FiLtEr` | Stability after the value settled | Steady-load noise |
+| --- | --- | --- |
+| 4 (default, 850 ms) | 1.5-2.9 s (2 placements) | 0.5 g peak-to-peak |
+| 3 (425 ms) | typically 0.5-0.7 s, up to ~2.8 s (15 placements) | up to 1.0 g peak-to-peak |
+
+`FiLtEr` 3 also drops the stability bit more often during handling. Changing
+the filter does not cancel calibration. Repeat this test per installation;
+vibration and product handling change the result.
 
 ## Calibration and Remaining Work
 

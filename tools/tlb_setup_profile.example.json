@@ -12,7 +12,7 @@
     "full_scale_g": null,
     "sensitivity_mv_v": null,
     "max_display_g": null,
-    "filter": 4,
+    "filter": 3,
     "anti_peak": "ON",
     "power_on_zero_g": 0,
     "zero_tracking": "NONE",
