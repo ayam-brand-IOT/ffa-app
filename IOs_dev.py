@@ -109,12 +109,14 @@ print("="*70)
 print(f"🔌 Inicializando pines virtuales...")
 print(f"   Laser Pin: {io_map.__LASER_PIN}")
 print(f"   Flash Pin: {io_map.__FLASH_PIN}")
+print(f"   Buzzer Pin: {io_map.__BUZZER_PIN}")
 print("✅ GPIO emulator listo para testing")
 print("="*70 + "\n")
 
 # Inicializar LEDs virtuales
 laser = VirtualLED(io_map.__LASER_PIN, name="LASER")
 flash = VirtualLED(io_map.__FLASH_PIN, name="FLASH")
+buzzer = VirtualLED(io_map.__BUZZER_PIN, name="BUZZER")
 
 # ============================================================================
 # FUNCIONES PÚBLICAS (API IDÉNTICA A IOs.py)
@@ -149,6 +151,14 @@ def set_flash(value):
     if VERBOSE_MODE:
         print(f"⚡ set_flash({value}) llamado")
     flash.value = value
+
+def set_buzzer(value):
+    """
+    Establece el estado del buzzer (activo: 1 suena, 0 calla)
+    """
+    if VERBOSE_MODE:
+        print(f"🔔 set_buzzer({value}) llamado")
+    buzzer.value = value
 
 def timered_flash():
     """
@@ -211,6 +221,17 @@ def get_flash_state():
         "value": flash.value
     }
 
+def get_buzzer_state():
+    """
+    Retorna el estado actual del buzzer
+    Returns: dict con información del buzzer
+    """
+    return {
+        "pin": buzzer.pin,
+        "is_lit": buzzer.is_lit,
+        "value": buzzer.value
+    }
+
 def get_all_states():
     """
     Retorna el estado de todos los pines GPIO
@@ -218,7 +239,8 @@ def get_all_states():
     """
     return {
         "laser": get_laser_state(),
-        "flash": get_flash_state()
+        "flash": get_flash_state(),
+        "buzzer": get_buzzer_state()
     }
 
 def reset_all():
@@ -229,6 +251,7 @@ def reset_all():
         print("\n🔄 Reseteando todos los GPIOs...")
     laser.off()
     flash.off()
+    buzzer.off()
     if VERBOSE_MODE:
         print("✅ Todos los GPIOs apagados\n")
 

@@ -15,6 +15,7 @@ from flask_socketio import emit
 from app import socketio, thread_lock
 from hardware import net, ios
 from logger import logEvent
+from scale_ready import ReadyDetector
 from services.config_service import update_fish_params
 
 
@@ -32,12 +33,34 @@ WEIGHT_POLL_INTERVAL = float(os.getenv("WEIGHT_POLL_INTERVAL", "0.1"))
 TENSION_POLL_INTERVAL = float(os.getenv("TENSION_POLL_INTERVAL", "0.05"))
 SCALE_ERROR_BACKOFF = float(os.getenv("SCALE_ERROR_BACKOFF", "1.0"))
 CALIBRATION_LEASE_SECONDS = float(os.getenv("CALIBRATION_LEASE_SECONDS", "300"))
+# Active buzzer on GPIO 17: one short beep, never a continuous tone.
+BUZZER_BEEP_SECONDS = float(os.getenv("BUZZER_BEEP_SECONDS", "0.12"))
 
 
 # ─────────────────────────── background helpers ───────────────────────────
 
 def frame_is_ready():
     socketio.emit('frame_ready', "frame ready")
+
+
+def _beep():
+    """One short beep in the background; never blocks the poller."""
+    if hasattr(ios, "set_buzzer"):
+        socketio.start_background_task(_beep_task)
+
+
+def _beep_task():
+    try:
+        ios.set_buzzer(True)
+        socketio.sleep(BUZZER_BEEP_SECONDS)
+    except Exception as exc:  # noqa: BLE001 - a buzzer fault must not stop weighing
+        logEvent(etapa="SYSTEM", status="ERROR",
+                 error_code="BUZZER_ERROR", error_msg=str(exc))
+    finally:
+        try:
+            ios.set_buzzer(False)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 # Last reading produced by the poller, so the on-demand handlers can answer
@@ -50,6 +73,23 @@ _calibration_owner_sid = None
 _calibration_last_activity = 0.0
 _calibration_inflight = False
 _calibration_release_pending = False
+# Clients showing the capture screen. The ready beep only sounds while at
+# least one is armed; calibration beeps on its own confirmed steps.
+_beep_sids = set()
+_ready = ReadyDetector()
+_ready_state = {"ready": False, "value": None}
+
+
+def _clear_ready():
+    _ready.reset()
+    _ready_state.update(ready=False, value=None)
+
+
+def _update_ready(snapshot):
+    ready, value, announce = _ready.update(snapshot)
+    _ready_state.update(ready=ready, value=value)
+    if announce and _beep_sids:
+        _beep()
 
 
 class CalibrationBusyError(RuntimeError):
@@ -157,6 +197,10 @@ def _emit_scale_snapshot(snapshot, tension_mode):
         "stale": snapshot.get("stale", False),
         "age_seconds": snapshot.get("age_seconds", 0.0),
         "mode": "tension" if tension_mode else "weight",
+        # Confirmed weight (scale_ready.py): HomeView captures ready_value, the
+        # same value the buzzer announced, never a separately received number.
+        "ready": bool(_ready_state["ready"]) and not tension_mode,
+        "ready_value": None if tension_mode else _ready_state["value"],
     })
 
 
@@ -178,6 +222,7 @@ def _poller_loop():
                         else net.readWeightSnapshot())
         except Exception as e:                       # noqa: BLE001
             _last_snapshot["tension" if tension_mode else "weight"] = None
+            _clear_ready()
             consecutive_errors += 1
             if consecutive_errors in (1, 5) or consecutive_errors % 50 == 0:
                 logEvent(
@@ -206,10 +251,15 @@ def _poller_loop():
             last_faults = faults
 
         if snapshot.get("calibrating"):
+            _clear_ready()
             socketio.sleep(WEIGHT_POLL_INTERVAL)
             continue
 
         _last_snapshot["tension" if tension_mode else "weight"] = snapshot
+        if tension_mode:
+            _clear_ready()
+        else:
+            _update_ready(snapshot)
         _emit_scale_snapshot(snapshot, tension_mode)
         socketio.sleep(TENSION_POLL_INTERVAL if tension_mode
                        else WEIGHT_POLL_INTERVAL)
@@ -260,6 +310,7 @@ def on_connect(auth):
 def on_disconnect():
     sid = request.sid
     print("Client disconnected")
+    _beep_sids.discard(sid)
     owner = _release_calibration(sid=sid)
     if owner is not None:
         logEvent(
@@ -272,6 +323,17 @@ def on_disconnect():
 
 
 # ─────────────────────────── hardware / scale ─────────────────────────────
+
+@socketio.event
+def arm_ready_beep(data=None):
+    """HomeView (capture screen) is open: beep when a weight is confirmed."""
+    _beep_sids.add(request.sid)
+
+
+@socketio.event
+def disarm_ready_beep(data=None):
+    _beep_sids.discard(request.sid)
+
 
 @socketio.event
 def calibrate_load_cell(data):
@@ -304,6 +366,8 @@ def calibrate_load_cell(data):
             )
         if step == 4:
             _release_calibration(sid=sid)
+        if step in (2, 3, 4):
+            _beep()  # zero, reference or save confirmed on a stable weight
         emit('calibration_step_commited', {"step": step, "args": args,
                                           "request_id": data.get("request_id"),
                                           "diagnostic": diagnostic})

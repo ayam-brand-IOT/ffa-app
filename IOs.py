@@ -1,4 +1,4 @@
-from gpiozero import LED
+from gpiozero import LED, Buzzer
 from gpiozero.pins.lgpio import LGPIOFactory
 from time import sleep
 from threading import Timer
@@ -9,6 +9,7 @@ pin_factory = LGPIOFactory()
 # Initialize laser and flash as LEDs
 laser = LED(io_map.__LASER_PIN, pin_factory=pin_factory)
 flash = LED(io_map.__FLASH_PIN, pin_factory=pin_factory)
+buzzer = Buzzer(io_map.__BUZZER_PIN, pin_factory=pin_factory)
 
 # Function to toggle the laser state
 def toggle_laser():
@@ -22,6 +23,9 @@ def set_laser(value):
 
 def set_flash(value):
     flash.value = value
+
+def set_buzzer(value):
+    buzzer.value = value
 
 # Function to flash the LED and then toggle the laser after a delay
 def timered_flash():

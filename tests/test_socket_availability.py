@@ -89,6 +89,8 @@ def reset_state():
     sockets._last_snapshot = {"weight": None, "tension": None}
     sockets._poller_started = False
     sockets._poller_task = None
+    sockets._beep_sids.clear()
+    sockets._clear_ready()
     socketio.emitted.clear()
     socketio.started.clear()
     net.calibrating = False

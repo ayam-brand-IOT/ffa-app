@@ -5,6 +5,7 @@
 #############################################
 __LASER_PIN = 22
 __FLASH_PIN = 23
+__BUZZER_PIN = 17   # active buzzer: on/off only, no PWM tone
 
 #############################################
 #                   INPUTS                  #
@@ -12,4 +13,4 @@ __FLASH_PIN = 23
 
 
 inputs = []
-outputs = [__LASER_PIN, __FLASH_PIN]
+outputs = [__LASER_PIN, __FLASH_PIN, __BUZZER_PIN]

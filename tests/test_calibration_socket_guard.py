@@ -46,6 +46,24 @@ class CalibrationSocketGuardTests(unittest.TestCase):
         self.assertFalse(net.calibrating)
         self.assertEqual(sockets._last_snapshot, {"weight": None, "tension": None})
 
+    def test_only_confirmed_weight_steps_beep(self):
+        started = fixtures.socketio.started
+        fixtures.hardware_module.ios.set_buzzer = lambda value: None
+        beeps = lambda: sum(1 for task in started if task[0] is sockets._beep_task)
+        self.send(1)
+        self.assertEqual(beeps(), 0)
+        for step in (2, 3, 4):
+            self.send(step)
+        self.assertEqual(beeps(), 3)
+
+        def fail(step, mode):
+            raise RuntimeError("weight never stabilised")
+        net.remote_calibration = fail
+        self.send(1)
+        self.send(2)
+        self.assertEqual(beeps(), 3)
+        del fixtures.hardware_module.ios.set_buzzer
+
     def test_bad_payloads_do_not_reach_driver(self):
         for payload in [None, [], "bad", {}, {"step": True, "args": "weight"},
                         {"step": 1, "args": "unknown"}]:
