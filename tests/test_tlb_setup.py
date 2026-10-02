@@ -18,14 +18,15 @@ setup = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(setup)
 
 
-def snapshot(weight=1000, captured_at=10):
-    raw = int(round(abs(weight) * 10))
+def snapshot(weight=1000, captured_at=10, division=0.5):
+    register, scale = setup.SUPPORTED_DIVISIONS[division]
+    raw = int(round(abs(weight) / scale))
     status = 0x0980 if weight < 0 else (0x1800 if weight == 0 else 0x0800)
     return {
         "slave": 1, "firmware_register": 11102, "instrument_type_register": 105,
-        "unit": "g", "division": 0.5, "division_register": 263,
+        "unit": "g", "division": float(division), "division_register": register,
         "registers_40001_40014": [11102, 105, 11, 1167, 96, None, status,
-                                   raw >> 16, raw & 65535, raw >> 16, raw & 65535, 0, 0, 263],
+                                   raw >> 16, raw & 65535, raw >> 16, raw & 65535, 0, 0, register],
         "status_raw": status, "net": weight, "gross": weight,
         "gross_minus_net": 0.0, "captured_at": captured_at, "stale": False,
         "faults": [], "interpretation": "legacy", "status_map_verified": False,
@@ -35,6 +36,8 @@ def snapshot(weight=1000, captured_at=10):
 class SetupTests(unittest.TestCase):
     def setUp(self):
         self.profile = setup.load_profile(setup.PROFILE_PATH)
+        # Most checks exercise the finer 0.5 g bench baseline.
+        self.profile["expected"]["division"] = 0.5
 
     def assess(self, weights=(1000, 1000, 1000), expected=1000):
         return setup.assess(self.profile, [snapshot(w, i) for i, w in enumerate(weights)], expected)
@@ -98,6 +101,21 @@ class SetupTests(unittest.TestCase):
     def test_one_gram_deviation_is_not_rounded_away(self):
         self.assertFalse(self.assess((999, 999, 999))["automatic_check_passed"])
         self.assertTrue(self.assess((999.5, 1000, 1000.5))["automatic_check_passed"])
+
+    def test_one_gram_division_profile(self):
+        profile = setup.load_profile(setup.PROFILE_PATH)
+        self.assertEqual(profile["expected"]["division"], 1)
+        check = lambda weights, division=1: setup.assess(
+            profile, [snapshot(w, i, division) for i, w in enumerate(weights)], 1000)
+        self.assertTrue(check((999, 1000, 1001))["automatic_check_passed"])
+        self.assertFalse(check((998, 1000, 1000))["automatic_check_passed"])
+        # A transmitter still at 0.5 g must not pass a 1 g profile.
+        result = check((1000, 1000, 1000), division=0.5)
+        self.assertFalse(result["automatic_check_passed"])
+        self.assertTrue(any("Raw division" in p for p in result["problems"]))
+        profile["expected"]["division"] = 2
+        with self.assertRaises(ValueError):
+            setup.validate_profile(profile)
 
     def test_zero_and_negative_half_gram_use_status_signs(self):
         self.assertTrue(self.assess((0, -0.5, 0), expected=0)["automatic_check_passed"])

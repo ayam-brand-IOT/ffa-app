@@ -17,6 +17,9 @@ from urllib.request import Request, urlopen
 
 
 PROFILE_PATH = Path(__file__).with_name("tlb_setup_profile.example.json")
+# Division in grams -> raw register 40014 (unit g in the high byte, division
+# index low) and the factor from display digits to grams.
+SUPPORTED_DIVISIONS = {0.5: (263, 0.1), 1: (262, 1)}
 MANUAL_LABELS = {
     "full_scale_g": "CALib / FS-tEO (g): rated system capacity, NOT net payload",
     "sensitivity_mv_v": "CALib / SEnSib (mV/V): use the load-cell datasheet",
@@ -54,8 +57,10 @@ def validate_profile(profile):
     for key in ("slave", "firmware_register", "instrument_type_register"):
         if type(expected.get(key)) is not int or expected[key] <= 0:
             raise ValueError("expected." + key + " must be a positive integer")
-    if expected["slave"] != 1 or expected.get("unit") != "g" or expected.get("division") != 0.5:
-        raise ValueError("This tool currently supports primary slave 1, grams, division 0.5")
+    if (expected["slave"] != 1 or expected.get("unit") != "g"
+            or type(expected.get("division")) not in (int, float)
+            or expected["division"] not in SUPPORTED_DIVISIONS):
+        raise ValueError("This tool currently supports primary slave 1, grams, division 0.5 or 1")
     manual = profile.get("keypad_targets")
     if not isinstance(manual, dict) or set(manual) != set(MANUAL_LABELS):
         raise ValueError("keypad_targets must contain exactly the documented fields")
@@ -251,13 +256,14 @@ def assess(profile, snapshots, expected_g, errors=()):
         if status & (1 << 10):
             reasons.append("NET mode/active tare; not automatically cleared")
         # Enforce the bench decimal mapping, not a division-count multiplier.
-        if words[13] != 263:
-            reasons.append("Raw division/unit differs from 0.5 g baseline")
+        raw_division, scale = SUPPORTED_DIVISIONS[target["division"]]
+        if words[13] != raw_division:
+            reasons.append("Raw division/unit differs from the {} g profile".format(target["division"]))
         else:
             for key, offset, sign in (("gross", 7, 7), ("net", 9, 8)):
                 raw = (words[offset] << 16) | words[offset + 1]
                 signed = raw - 2**32 if raw >= 2**31 else raw
-                value = round(abs(signed) * (-0.1 if status & (1 << sign) else 0.1), 4)
+                value = round(abs(signed) * (-scale if status & (1 << sign) else scale), 4)
                 if abs(value - d[key]) > 0.0001:
                     reasons.append(key + " does not match raw display digits")
         tolerance = target["division"]

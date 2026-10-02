@@ -6,7 +6,7 @@
     "firmware_register": 11102,
     "instrument_type_register": 105,
     "unit": "g",
-    "division": 0.5
+    "division": 1
   },
   "keypad_targets": {
     "full_scale_g": null,

@@ -18,7 +18,7 @@ settings from the debugging transmitter and not a profile for the belly test.
 
 | Setting | Profile target | Verification |
 | --- | --- | --- |
-| Unit / division | g / 0.5 g | Read through backend, including raw register 40014 |
+| Unit / division | g / 1 g (0.5 g still accepted) | Read through backend, including raw register 40014. Restart `ffa-app` after changing it: the backend caches the division at startup |
 | Slave | 1 | Read through backend |
 | Firmware/type IDs | 11102 / 105, observed on the debug unit | Compare raw IDs, review differences before production |
 | `FS-tEO` | Unset: actual rated system capacity in grams | Cell datasheet and keypad |
@@ -123,8 +123,11 @@ A check requires fresh increasing diagnostic timestamps, a consistent device
 identity, matching expected IDs/unit/division, no fault or active NET mode,
 legacy stability, agreement with raw display digits, and NET/GROSS within one
 division of the expected load and each other. It never averages away a failed
-sample or silently widens the tolerance. At 0.5 g division, 999.0 g fails a
-1000.0 g check; 999.5 g is within its software threshold.
+sample or silently widens the tolerance. The tolerance is one division:
+at 1 g, 998 g fails a 1000 g check and 999 g passes; at 0.5 g, 999.0 g fails.
+
+The debug unit moved from 0.5 g to 1 g on 2026-09-28: with `FiLtEr` 3 its
+~1 g steady noise was two 0.5 g divisions and kept toggling the stability bit.
 
 JSON reports embed the target profile, its SHA-256, raw snapshots, expected
 weight, and failures. They always distinguish `automatic_check_passed` from
