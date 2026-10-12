@@ -1,0 +1,5 @@
+#!/bin/sh
+# Run by Wayfire's [autostart]: hand the session's display to the user
+# systemd manager, then start the kiosk service.
+systemctl --user import-environment WAYLAND_DISPLAY DISPLAY XDG_RUNTIME_DIR XAUTHORITY
+exec systemctl --user start ffa-kiosk.service
