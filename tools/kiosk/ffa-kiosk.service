@@ -8,7 +8,11 @@ Description=FFA kiosk: Chromium full screen on the local ffa-app UI
 # error page that would stay up once the app is ready.
 ExecStartPre=%h/.local/bin/ffa-kiosk-wait
 TimeoutStartSec=infinity
+# A dedicated profile: with the default one, a Chromium already open by hand
+# would receive the URL and this process would exit at once, so Restart=
+# would keep opening windows in it.
 ExecStart=/usr/bin/chromium-browser \
+  --user-data-dir=%h/.config/ffa-kiosk-chromium \
   --kiosk http://127.0.0.1:3030 \
   --noerrdialogs --disable-infobars --incognito \
   --disable-session-crashed-bubble --disable-restore-session-state \
