@@ -1,0 +1,5 @@
+#!/bin/sh
+# Maintenance: close the kiosk until the next login (or until install.sh runs).
+pkill -u "$(id -u)" -f ffa-kiosk-session
+pkill -u "$(id -u)" -f "user-data-dir=$HOME/.config/ffa-kiosk-chromium"
+exit 0

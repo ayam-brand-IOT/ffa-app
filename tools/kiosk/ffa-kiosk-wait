@@ -1,5 +1,0 @@
-#!/bin/sh
-# Block until the ffa-app UI answers on 127.0.0.1:3030.
-until curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3030/; do
-    sleep 2
-done

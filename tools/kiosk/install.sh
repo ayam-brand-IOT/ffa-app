@@ -8,20 +8,25 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 INI="$HOME/.config/wayfire.ini"
 BACKUP="$INI.before-ffa-kiosk"
 
-if [ "$1" = "--uninstall" ]; then
+# Earlier versions ran Chromium from a systemd user service.
+remove_legacy_service() {
     systemctl --user stop ffa-kiosk.service 2>/dev/null || true
-    rm -f "$HOME/.config/systemd/user/ffa-kiosk.service" \
-          "$HOME/.local/bin/ffa-kiosk-wait" "$HOME/.local/bin/ffa-kiosk-session"
-    systemctl --user daemon-reload
+    rm -f "$HOME/.config/systemd/user/ffa-kiosk.service" "$HOME/.local/bin/ffa-kiosk-wait"
+    systemctl --user daemon-reload 2>/dev/null || true
+}
+
+if [ "$1" = "--uninstall" ]; then
+    "$HERE/ffa-kiosk-stop"
+    remove_legacy_service
+    rm -f "$HOME/.local/bin/ffa-kiosk-session" "$HOME/.local/bin/ffa-kiosk-stop"
     if [ -f "$BACKUP" ]; then mv "$BACKUP" "$INI"; fi
     echo "Kiosk removed; wayfire.ini restored."
     exit 0
 fi
 
-mkdir -p "$HOME/.local/bin" "$HOME/.config/systemd/user"
-install -m 755 "$HERE/ffa-kiosk-wait" "$HERE/ffa-kiosk-session" "$HOME/.local/bin/"
-install -m 644 "$HERE/ffa-kiosk.service" "$HOME/.config/systemd/user/"
-systemctl --user daemon-reload
+remove_legacy_service
+mkdir -p "$HOME/.local/bin"
+install -m 755 "$HERE/ffa-kiosk-session" "$HERE/ffa-kiosk-stop" "$HOME/.local/bin/"
 
 # Keep the very first original: re-running the installer must not overwrite it.
 [ -f "$BACKUP" ] || cp "$INI" "$BACKUP"
@@ -48,15 +53,14 @@ with open(path, "w") as f:
     ini.write(f)
 PY
 
-# Start now when run inside a desktop session (Wayfire reloads its ini live).
+# Start now when a desktop session is running, with that session's display.
+"$HOME/.local/bin/ffa-kiosk-stop"
 if pgrep -u "$(id -u)" -x wayfire >/dev/null; then
-    WF_PID=$(pgrep -u "$(id -u)" -x wayfire | head -1)
-    for var in WAYLAND_DISPLAY DISPLAY XAUTHORITY; do
-        value=$(tr '\0' '\n' < "/proc/$WF_PID/environ" | sed -n "s/^$var=//p")
-        [ -n "$value" ] && systemctl --user set-environment "$var=$value"
-    done
-    systemctl --user restart ffa-kiosk.service
+    export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    WAYLAND_DISPLAY=$(ls "$XDG_RUNTIME_DIR" | grep -E '^wayland-[0-9]+$' | head -1)
+    export WAYLAND_DISPLAY
+    setsid "$HOME/.local/bin/ffa-kiosk-session" >/dev/null 2>&1 < /dev/null &
 fi
 echo "Kiosk installed. Exit for maintenance over SSH:"
-echo "  systemctl --user stop ffa-kiosk.service   (until next login)"
-echo "  $HERE/install.sh --uninstall              (permanently)"
+echo "  ~/.local/bin/ffa-kiosk-stop     (until next login)"
+echo "  $HERE/install.sh --uninstall    (permanently)"

@@ -1,5 +1,32 @@
 #!/bin/sh
-# Run by Wayfire's [autostart]: hand the session's display to the user
-# systemd manager, then start the kiosk service.
-systemctl --user import-environment WAYLAND_DISPLAY DISPLAY XDG_RUNTIME_DIR XAUTHORITY
-exec systemctl --user start ffa-kiosk.service
+# Run by Wayfire's [autostart], so Chromium is a child of the desktop session
+# with its full environment. Started from a systemd user service instead,
+# Chromium 125 on Wayfire 0.7.5 often ignored --kiosk: it came up as a normal
+# window (or an unpainted full-screen surface) and the desktop showed through.
+
+# One kiosk per session, even if the installer starts it again.
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/ffa-kiosk.lock"
+flock -n 9 || exit 0
+
+# ffa-app can take a while after boot: wait for it instead of showing an
+# error page that would stay up once the app is ready.
+until curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3030/; do
+    sleep 2
+done
+
+# Closing Chromium (Alt+F4, Ctrl+W, crash) brings it straight back.
+while true; do
+    # A dedicated profile: with the default one, a Chromium already open by
+    # hand would receive the URL and this one would exit at once.
+    /usr/bin/chromium-browser \
+        --user-data-dir="$HOME/.config/ffa-kiosk-chromium" \
+        --ozone-platform=wayland \
+        --kiosk http://127.0.0.1:3030 \
+        --noerrdialogs --disable-infobars --incognito \
+        --disable-session-crashed-bubble --disable-restore-session-state \
+        --no-first-run --password-store=basic \
+        --disable-pinch --overscroll-history-navigation=0 \
+        --disable-features=Translate,TranslateUI \
+        --check-for-update-interval=31536000
+    sleep 2
+done
