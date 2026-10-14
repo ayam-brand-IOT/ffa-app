@@ -11,6 +11,9 @@ kiosk mode on `http://127.0.0.1:3030`:
   it from a systemd user service; on Chromium 125 / Wayfire 0.7.5 it then often
   ignored `--kiosk` and showed up as a normal window behind the desktop.
   Wayfire 0.7.5 window rules cannot force full screen (maximize only).
+- Chromium runs on X11 through Xwayland. With the native Wayland backend,
+  `--kiosk` and `--start-fullscreen` opened a ~500x1 px window at the top-left
+  (screen showed only the desktop); verified with screenshots on 2026-10-14.
 - Wayfire shortcuts that leave the kiosk are disabled: Super (menu),
   Ctrl+Alt+T/B/W/Space, Ctrl+Alt+Delete. Volume keys, screenshot and the
   physical power key still work. Esc, Tab, Ctrl, Shift and Caps Lock are

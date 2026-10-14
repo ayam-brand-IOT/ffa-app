@@ -14,13 +14,19 @@ until curl -sf -o /dev/null --max-time 2 http://127.0.0.1:3030/; do
     sleep 2
 done
 
+# X11 through Xwayland: on this Pi (Chromium 125, Wayfire 0.7.5) the native
+# Wayland backend opened --kiosk and --start-fullscreen as a ~500x1 px sliver
+# at the top-left, so only the desktop was visible. Xwayland fills the screen.
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+
 # Closing Chromium (Alt+F4, Ctrl+W, crash) brings it straight back.
 while true; do
     # A dedicated profile: with the default one, a Chromium already open by
     # hand would receive the URL and this one would exit at once.
     /usr/bin/chromium-browser \
         --user-data-dir="$HOME/.config/ffa-kiosk-chromium" \
-        --ozone-platform=wayland \
+        --ozone-platform=x11 \
         --kiosk http://127.0.0.1:3030 \
         --noerrdialogs --disable-infobars --incognito \
         --disable-session-crashed-bubble --disable-restore-session-state \
