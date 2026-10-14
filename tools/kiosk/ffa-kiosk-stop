@@ -1,5 +1,7 @@
 #!/bin/sh
 # Maintenance: close the kiosk until the next login (or until install.sh runs).
-pkill -u "$(id -u)" -f ffa-kiosk-session
-pkill -u "$(id -u)" -f "user-data-dir=$HOME/.config/ffa-kiosk-chromium"
+# Patterns are anchored to the real command lines: a bare "ffa-kiosk-session"
+# also matched any shell (e.g. an SSH command) that merely mentioned it.
+pkill -u "$(id -u)" -f "^/bin/sh $HOME/.local/bin/ffa-kiosk-session"
+pkill -u "$(id -u)" -f "^/usr/lib/chromium-browser/chromium-browser .*--user-data-dir=$HOME/.config/ffa-kiosk-chromium"
 exit 0
