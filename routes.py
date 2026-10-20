@@ -10,7 +10,7 @@ import json
 import os
 import eventlet
 import imageProcess
-from flask import render_template, Response, request
+from flask import redirect, render_template, Response, request, send_from_directory
 
 from app import app, socketio
 from logger import logEvent
@@ -54,6 +54,24 @@ def _analyzed_image_response():
     if not ret:
         return None, None
     return buffer.tobytes(), imageProcess.get_analysis_data()
+
+
+# ─────────────────────────── operator manual ──────────────────────────────
+
+# The UI build copies public/manual into dist/manual; the catch-all below
+# would otherwise answer every /manual/... request with the SPA.
+MANUAL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dist", "manual")
+
+
+@app.route('/manual')
+def manual_root():
+    return redirect('/manual/')
+
+
+@app.route('/manual/', defaults={'path': 'index.html'})
+@app.route('/manual/<path:path>')
+def manual(path):
+    return send_from_directory(MANUAL_DIR, path)
 
 
 # ─────────────────────────── SPA catch-all ────────────────────────────────
