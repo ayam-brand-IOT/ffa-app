@@ -17,7 +17,7 @@
 #   FFA_SSH_KEY     ~/.ssh/ffa_pi_ed25519
 #   FFA_REMOTE_DIR  Documents/FFA-complete-project   (relative to the remote home)
 #   FFA_REMOTE_UI   ffa-view                         (UI repo folder on the station)
-set -eu
+set -eu -o pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 APP_DIR=$(cd "$HERE/../.." && pwd)
@@ -107,13 +107,24 @@ remote "set -e; B=~/ffa-backups/deploy-$TS; mkdir -p \$B; cd $REMOTE_DIR
 
 # ------------------------------------------------------------------ copy + pull
 step "Copy dist"
-# shellcheck disable=SC2086
-rsync -az --delete --stats -e "ssh $SSH_OPTS" "$DIST/" "$TARGET:$REMOTE_DIR/ffa-app/dist/" \
-    | grep -E 'Number of (regular )?files transferred|Total transferred file size' | sed 's/^/  /'
+# rsync resumes where a dropped connection left it; --partial keeps half-sent files.
+copied=0
+for try in 1 2 3 4 5; do
+    # shellcheck disable=SC2086
+    if out=$(rsync -az --partial --timeout=30 --delete --stats -e "ssh $SSH_OPTS" "$DIST/" "$TARGET:$REMOTE_DIR/ffa-app/dist/" 2>&1); then
+        echo "$out" | grep -E 'Number of (regular )?files transferred|Total transferred file size' | sed 's/^/  /'
+        copied=1; break
+    fi
+    echo "  copy interrupted, retrying ($try/5)..." >&2
+    sleep 5
+done
+[ $copied -eq 1 ] || die "could not copy dist (connection). Nothing was pulled or restarted; run the script again. Backup in ~/ffa-backups/deploy-$TS"
 
 step "Pull ffa-app and $REMOTE_UI (fast-forward only)"
-remote "set -e; cd $REMOTE_DIR; for r in ffa-app $REMOTE_UI; do echo \"  \$r:\"; git -C \$r pull -q --ff-only; git -C \$r log --oneline -1 | sed 's/^/    /'; done" \
-    || die "git pull failed on the station (local changes or diverged branch). dist is already copied; backup in ~/ffa-backups/deploy-$TS"
+rc=0
+remote "set -e; cd $REMOTE_DIR; for r in ffa-app $REMOTE_UI; do echo \"  \$r:\"; git -C \$r pull -q --ff-only; git -C \$r log --oneline -1 | sed 's/^/    /'; done" || rc=$?
+if [ $rc -eq 255 ]; then die "lost the connection during git pull; nothing restarted. Run the script again (--no-build). Backup in ~/ffa-backups/deploy-$TS"
+elif [ $rc -ne 0 ]; then die "git pull failed on the station (local changes or diverged branch); nothing restarted. Backup in ~/ffa-backups/deploy-$TS"; fi
 
 # --------------------------------------------------------------------- restart
 step "Restart ffa-app"
