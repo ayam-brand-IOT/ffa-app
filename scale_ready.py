@@ -1,25 +1,36 @@
 """
 scale_ready.py - "weight confirmed" detection for the capture screen.
 
-The transmitter's stability bit is not a reliable signal on its own. It can
-flicker on while a load is still being settled by hand (bench: stable at
-764.5 g, then 790.5 g), and with FiLtEr 3 it flickers off whenever the weight
-sits on the edge between two divisions (812.5 / 813.0), which used to restart
-the count until HomeView gave up. So readiness is decided here: the last
-READY_SAMPLES readings with a load on the scale must agree within
-READY_TOLERANCE divisions, and the transmitter must have called at least one
-of them stable. The value is their median, rounded to the division, so a
-reading toggling between two divisions still gives one fixed weight.
-HomeView captures that value and the buzzer announces it, so the beep and the
-stored weight always match.
+Recorded on the production station (traces/, 2026-10-21, FiLtEr 3, 1 g):
+
+- The settled value is clean: it holds the same gram, or toggles between two
+  neighbouring grams when the load sits on a division edge (221/222 g).
+- The transmitter's stability bit trails the settled value by ~1.1 s, and on
+  a division edge it may never come on (221/222 g: 11 s, never stable).
+- After a stable weight, the first new value is frozen for ~0.8 s (6 polls,
+  likely the anti-peak filter). Those frozen readings agree perfectly, so
+  agreement alone would confirm a weight the load never had.
+
+So a weight is ready when either
+- the last READY_SAMPLES loaded readings agree within READY_TOLERANCE
+  divisions and the transmitter marked one of them stable, or
+- the last READY_UNSTABLE_SAMPLES readings agree within the same tolerance
+  without the bit: longer than the frozen hold, short enough that a reading
+  on a division edge is confirmed in ~1 s instead of never.
+
+The value is the median of the agreeing readings, rounded to the division.
+HomeView captures that value and the buzzer announces it, so the beep and
+the stored weight always match.
 """
 
 import os
 from statistics import median
 
-READY_SAMPLES = int(os.getenv("SCALE_READY_SAMPLES", "5"))
+READY_SAMPLES = int(os.getenv("SCALE_READY_SAMPLES", "4"))
+# Must stay longer than the transmitter's frozen hold (6 polls at 0.137 s).
+READY_UNSTABLE_SAMPLES = int(os.getenv("SCALE_READY_UNSTABLE_SAMPLES", "8"))
 # Spread allowed inside the window, in divisions.
-READY_TOLERANCE = float(os.getenv("SCALE_READY_TOLERANCE_DIVISIONS", "2"))
+READY_TOLERANCE = float(os.getenv("SCALE_READY_TOLERANCE_DIVISIONS", "1"))
 # Below this net weight the scale counts as empty: no beep, and the next load
 # is announced even if it weighs the same as the previous one.
 READY_MIN_GRAMS = float(os.getenv("SCALE_READY_MIN_GRAMS", "20"))
@@ -27,8 +38,9 @@ READY_MIN_GRAMS = float(os.getenv("SCALE_READY_MIN_GRAMS", "20"))
 
 class ReadyDetector:
     def __init__(self, samples=READY_SAMPLES, min_grams=READY_MIN_GRAMS,
-                 tolerance=READY_TOLERANCE):
+                 tolerance=READY_TOLERANCE, unstable_samples=READY_UNSTABLE_SAMPLES):
         self.samples = max(1, int(samples))
+        self.unstable_samples = max(self.samples, int(unstable_samples))
         self.min_grams = float(min_grams)
         self.tolerance = max(1.0, float(tolerance))
         self.reset()
@@ -36,6 +48,13 @@ class ReadyDetector:
     def reset(self):
         self._window = []
         self._announced = None
+
+    def _agreeing(self, count, band):
+        if len(self._window) < count:
+            return None
+        recent = self._window[-count:]
+        values = [v for v, _ in recent]
+        return recent if max(values) - min(values) <= band else None
 
     def update(self, snapshot):
         """Feed one poller snapshot; return (ready, value, announce).
@@ -55,15 +74,15 @@ class ReadyDetector:
             return False, None, False
 
         self._window.append((net, bool(snapshot.get("stable"))))
-        del self._window[:-self.samples]
-        values = [v for v, _ in self._window]
+        del self._window[:-self.unstable_samples]
         band = self.tolerance * division
-        if (len(values) < self.samples
-                or max(values) - min(values) > band
-                or not any(stable for _, stable in self._window)):
+        recent = self._agreeing(self.samples, band)
+        if recent is None or not any(stable for _, stable in recent):
+            recent = self._agreeing(self.unstable_samples, band)
+        if recent is None:
             return False, None, False
 
-        value = round(median(values) / division) * division
+        value = round(median(v for v, _ in recent) / division) * division
         announce = (self._announced is None
                     or abs(value - self._announced) > band)
         if announce:

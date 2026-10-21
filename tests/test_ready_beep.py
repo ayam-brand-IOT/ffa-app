@@ -48,10 +48,26 @@ class ReadyDetectorTests(unittest.TestCase):
         self.assertEqual(sum(r[2] for r in results), 1)
 
     def test_never_stable_or_still_drifting_is_not_ready(self):
-        d = ReadyDetector(samples=3, min_grams=20)
-        self.assertFalse(any(r[0] for r in self.feed(d, (1000,) * 5, stable=False)))
+        d = ReadyDetector(samples=3, min_grams=20, unstable_samples=8)
+        self.assertFalse(any(r[0] for r in self.feed(d, (1000,) * 7, stable=False)))
         d = ReadyDetector(samples=3, min_grams=20)
         self.assertFalse(any(r[0] for r in self.feed(d, (1000, 1001.5, 1003, 1004.5))))
+
+    def test_edge_toggle_without_stability_bit_is_confirmed(self):
+        # Prod trace: 221/222 g for 11 s and the bit never came on.
+        d = ReadyDetector(samples=4, min_grams=20, unstable_samples=8)
+        results = self.feed(d, (221, 222, 222, 221, 221, 222, 221, 222, 222), stable=False)
+        self.assertEqual([r[0] for r in results], [False] * 7 + [True, True])
+        self.assertEqual(sum(r[2] for r in results), 1)
+
+    def test_frozen_hold_after_stable_weight_is_not_confirmed(self):
+        # Prod trace: stable empty scale, then 955 g frozen for 6 polls, then 999 g.
+        d = ReadyDetector(samples=4, min_grams=20, unstable_samples=8)
+        self.feed(d, (0,) * 5)
+        results = self.feed(d, (955,) * 6, stable=False)
+        self.assertFalse(any(r[0] for r in results))
+        results = self.feed(d, (999,) * 4 + (999,), stable=True)
+        self.assertEqual(results[3], (True, 999, True))
 
     def test_early_stable_flag_on_a_settling_load_is_not_ready(self):
         # Bench: stability raised at 980 g, then the load settled at 1000 g.
