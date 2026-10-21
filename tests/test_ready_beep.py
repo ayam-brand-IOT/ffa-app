@@ -29,12 +29,29 @@ class ReadyDetectorTests(unittest.TestCase):
         self.assertEqual([r[0] for r in results], [False, False, True])
         self.assertEqual(results[-1], (True, 1000, True))
 
-    def test_flicker_restarts_the_count_without_a_second_beep(self):
+    def test_one_unstable_reading_does_not_restart_or_beep_again(self):
         d = ReadyDetector(samples=3, min_grams=20)
         self.feed(d, (1000, 1000, 1000))
-        self.assertEqual(d.update(reading(1000, stable=False)), (False, None, False))
-        results = self.feed(d, (1000, 1000, 1000))
-        self.assertEqual(results[-1], (True, 1000, False))
+        self.assertEqual(d.update(reading(1000, stable=False)), (True, 1000, False))
+
+    def test_reading_on_a_division_edge_is_captured_once(self):
+        # FiLtEr 3: the weight toggles between two divisions and the
+        # transmitter drops its stability bit on every toggle.
+        d = ReadyDetector(samples=5, min_grams=20)
+        values = (812.5, 813.0, 812.5, 813.0, 813.0, 812.5, 813.0)
+        stable = (True, False, True, False, False, True, False)
+        results = [d.update(reading(v, stable=s, division=0.5))
+                   for v, s in zip(values, stable)]
+        self.assertEqual([r[0] for r in results],
+                         [False, False, False, False, True, True, True])
+        self.assertEqual(results[4], (True, 813.0, True))
+        self.assertEqual(sum(r[2] for r in results), 1)
+
+    def test_never_stable_or_still_drifting_is_not_ready(self):
+        d = ReadyDetector(samples=3, min_grams=20)
+        self.assertFalse(any(r[0] for r in self.feed(d, (1000,) * 5, stable=False)))
+        d = ReadyDetector(samples=3, min_grams=20)
+        self.assertFalse(any(r[0] for r in self.feed(d, (1000, 1001.5, 1003, 1004.5))))
 
     def test_early_stable_flag_on_a_settling_load_is_not_ready(self):
         # Bench: stability raised at 980 g, then the load settled at 1000 g.
