@@ -16,6 +16,7 @@ from app import socketio, thread_lock
 from hardware import net, ios
 from logger import logEvent
 from scale_ready import ReadyDetector
+from scale_trace import ScaleTrace
 from services.config_service import update_fish_params
 
 
@@ -78,6 +79,7 @@ _calibration_release_pending = False
 _beep_sids = set()
 _ready = ReadyDetector()
 _ready_state = {"ready": False, "value": None}
+_trace = ScaleTrace()
 
 
 def _clear_ready():
@@ -88,6 +90,7 @@ def _clear_ready():
 def _update_ready(snapshot):
     ready, value, announce = _ready.update(snapshot)
     _ready_state.update(ready=ready, value=value)
+    _trace.record(snapshot, ready, value)
     if announce and _beep_sids:
         _beep()
 

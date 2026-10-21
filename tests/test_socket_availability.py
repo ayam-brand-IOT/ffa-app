@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Focused tests for calibration leases and poller startup supervision."""
 
+import os
 import sys
 import threading
 import types
@@ -78,6 +79,7 @@ config_service_module = types.ModuleType("services.config_service")
 config_service_module.update_fish_params = lambda data: {"status": "ok"}
 sys.modules["services.config_service"] = config_service_module
 
+os.environ.setdefault("SCALE_TRACE", "0")  # tests never write traces
 import sockets  # noqa: E402
 
 

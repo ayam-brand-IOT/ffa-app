@@ -31,3 +31,6 @@ build/
 
 # Optional local regression-test dependencies
 .test-runtime/
+
+# Weight traces for filter tuning (scale_trace.py)
+traces/
