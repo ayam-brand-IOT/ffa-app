@@ -31,8 +31,9 @@ def _video_stream():
         if frame is None:
             eventlet.sleep(VIDEO_NO_FRAME_BACKOFF)
             continue
-        cv2.line(frame, (200, 0), (200, 1000), (0, 0, 255), 1)
-        cv2.line(frame, (0, 330), (1000, 330), (0, 0, 255), 1)
+        height, width = frame.shape[:2]
+        cv2.line(frame, (imageProcess.zero_line, 0), (imageProcess.zero_line, height), (0, 0, 255), 1)
+        cv2.line(frame, (0, imageProcess.GUIDE_LINE_Y), (width, imageProcess.GUIDE_LINE_Y), (0, 0, 255), 1)
         ret, buffer = cv2.imencode('.jpeg', frame)
         if not ret:
             eventlet.sleep(VIDEO_NO_FRAME_BACKOFF)
@@ -101,6 +102,11 @@ def analyzed_image():
 
 
 # ─────────────────────────── calibration ──────────────────────────────────
+
+@app.route('/vision_geometry')
+def vision_geometry():
+    return imageProcess.get_vision_geometry()
+
 
 @app.route('/length_calibration', methods=['POST'])
 def length_calibration():

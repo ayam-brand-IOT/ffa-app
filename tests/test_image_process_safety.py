@@ -63,7 +63,7 @@ def test_failed_analysis_clears_previous_result():
 
 
 def test_pending_frame_is_consumed_once():
-    frame = np.zeros((650, 1000, 3), dtype=np.uint8)
+    frame = np.zeros((960, 1280, 3), dtype=np.uint8)
     imageProcess.handle_capture(None, frame)
     imageProcess.fish_parameters = {}
 
@@ -106,7 +106,7 @@ def test_zero_line_fallback_is_local_to_one_analysis():
         }
 
         result = imageProcess.run_analysis(
-            np.zeros((650, 1000, 3), dtype=np.uint8)
+            np.zeros((960, 1280, 3), dtype=np.uint8)
         )
 
         assert result["ok"] is True
@@ -156,6 +156,15 @@ def test_camera_open_failure_can_recover_without_restart():
         def isOpened(self):
             return self.opened
 
+        def set(self, prop, value):
+            return True
+
+        def get(self, prop):
+            return {
+                imageProcess.cv2.CAP_PROP_FRAME_WIDTH: imageProcess.CAMERA_WIDTH,
+                imageProcess.cv2.CAP_PROP_FRAME_HEIGHT: imageProcess.CAMERA_HEIGHT,
+            }.get(prop, 0)
+
         def release(self):
             self.released = True
 
@@ -188,6 +197,57 @@ def test_camera_open_failure_can_recover_without_restart():
         ) = original_state
 
 
+def test_legacy_config_moves_to_the_camera_frame():
+    # The temp config is in the old stretched 1000x650 space; importing
+    # imageProcess rewrote it for 1280x960 with the same field of view.
+    stored = json.loads(config_path.read_text(encoding="utf-8"))
+    assert stored["frame_size"] == {"width": 1280, "height": 960}
+    assert stored["zoi"] == [{"x": 51, "y": 148}, {"x": 1203, "y": 783}]
+    assert stored["zero_line"] == 256
+    assert abs(stored["ppmm"] - 0.23 / 1.28) < 1e-9
+    assert imageProcess.get_vision_geometry()["zero_line"] == 256
+
+    # Loading again must not scale twice.
+    imageProcess.loadConfig()
+    assert json.loads(config_path.read_text(encoding="utf-8")) == stored
+
+
+def test_camera_in_another_mode_is_not_used():
+    original_video_capture = imageProcess.cv2.VideoCapture
+    original_cap = imageProcess.cap
+
+    class WrongModeCapture:
+        released = False
+
+        def isOpened(self):
+            return True
+
+        def set(self, prop, value):
+            return False
+
+        def get(self, prop):
+            return {
+                imageProcess.cv2.CAP_PROP_FRAME_WIDTH: 640,
+                imageProcess.cv2.CAP_PROP_FRAME_HEIGHT: 480,
+            }.get(prop, 0)
+
+        def release(self):
+            WrongModeCapture.released = True
+
+    imageProcess.cv2.VideoCapture = lambda source: WrongModeCapture()
+    imageProcess.cap = None
+    imageProcess._camera_next_retry_at = 0.0
+    try:
+        assert imageProcess._open_camera() is False
+        assert imageProcess.cap is None
+        assert WrongModeCapture.released is True
+    finally:
+        imageProcess.cv2.VideoCapture = original_video_capture
+        imageProcess.cap = original_cap
+        imageProcess._camera_next_retry_at = 0.0
+        imageProcess._camera_retry_delay = imageProcess.CAMERA_RETRY_INITIAL
+
+
 def main():
     try:
         test_failed_analysis_clears_previous_result()
@@ -196,6 +256,8 @@ def main():
         test_zero_line_fallback_is_local_to_one_analysis()
         test_boolean_measurement_parameters_are_rejected()
         test_camera_open_failure_can_recover_without_restart()
+        test_legacy_config_moves_to_the_camera_frame()
+        test_camera_in_another_mode_is_not_used()
         print("Image process safety tests passed")
     finally:
         temp_dir.cleanup()

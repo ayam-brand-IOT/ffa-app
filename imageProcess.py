@@ -21,6 +21,13 @@ CAMERA_RETRY_INITIAL = float(os.getenv("CAMERA_RETRY_INITIAL", "0.5"))
 CAMERA_RETRY_MAX = float(os.getenv("CAMERA_RETRY_MAX", "10.0"))
 CAMERA_READ_FAILURE_LIMIT = int(os.getenv("CAMERA_READ_FAILURE_LIMIT", "3"))
 
+# The camera is asked for this exact mode and the frame is measured as it
+# arrives: the pixels stay square, so one mm/px ratio holds for length and
+# height. MJPG is the only format that gives 1280x960 at 30 fps (YUYV: 5 fps).
+CAMERA_WIDTH = int(os.getenv("CAMERA_WIDTH", "1280"))
+CAMERA_HEIGHT = int(os.getenv("CAMERA_HEIGHT", "960"))
+CAMERA_FOURCC = os.getenv("CAMERA_FOURCC", "MJPG")
+
 # Initialize camera lazily to avoid errors when the device is missing. Track
 # when the camera is unavailable so we do not spam warnings by retrying on
 # every frame.
@@ -98,6 +105,24 @@ def _open_camera():
         _mark_camera_unavailable("No se pudo abrir la camara {0}".format(source))
         return False
 
+    # FOURCC goes before the size: V4L2 picks the mode from both.
+    candidate.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*CAMERA_FOURCC))
+    candidate.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+    candidate.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+    got = (int(candidate.get(cv2.CAP_PROP_FRAME_WIDTH)),
+           int(candidate.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+    if got != (CAMERA_WIDTH, CAMERA_HEIGHT):
+        # The calibration only holds at one resolution: measuring at another
+        # would give wrong millimetres without any visible error.
+        try:
+            candidate.release()
+        except Exception:
+            pass
+        _mark_camera_unavailable(
+            "La camara entrega {0}x{1} en lugar de {2}x{3}".format(
+                got[0], got[1], CAMERA_WIDTH, CAMERA_HEIGHT))
+        return False
+
     cap = candidate
     recovered = _camera_failure_reported
     _camera_unavailable = False
@@ -139,11 +164,10 @@ def _capture_loop():
             _native_time.sleep(0.05)
             continue
         _camera_read_failures = 0
-        try:
-            frame = cv2.resize(frame, (1000, 650))
-        except Exception as exc:  # noqa: BLE001 - malformed backend frame
+        if getattr(frame, "shape", None) is None or frame.shape[1::-1] != __FRAMESIZE__:
             _mark_camera_unavailable(
-                "La camara entrego un frame invalido: {0}".format(exc)
+                "La camara entrego un frame de {0} en lugar de {1}x{2}".format(
+                    getattr(frame, "shape", None), *__FRAMESIZE__)
             )
             continue
         with _frame_lock:
@@ -207,7 +231,13 @@ def wait_for_frame_since(seq, skip_frames=1, timeout=0.35):
 __RATIO__ = 16/9
 __CAMERA_WIDTH__ = 550
 __CAMERA_HEIGTH__ = math.floor(__CAMERA_WIDTH__/__RATIO__)
-__FRAMESIZE__ = (1000, 650)
+__FRAMESIZE__ = (CAMERA_WIDTH, CAMERA_HEIGHT)
+# Until 2026-10-26 the 640x480 camera frame was stretched to 1000x650 and the
+# ZOI, laser line and mm/px were saved in that space. Configs without
+# "frame_size" are in it.
+LEGACY_FRAME_SIZE = (1000, 650)
+# Horizontal guide on the live view, at the height it had in that space.
+GUIDE_LINE_Y = round(CAMERA_HEIGHT * 330 / 650)
 SAMPLE_IMAGES_PATH = Path(
     os.getenv("SAMPLE_IMAGES_PATH", Path(__file__).resolve().parent / "muestras")
 ).resolve()
@@ -228,7 +258,7 @@ tailTriggerDiameter : 40 # previously >> Z1 = 40  # Size of the tail we want
 captured = False
 # pause_image = False
 lytho = 1.2  # user threshold 1.2
-zero_line = 200
+zero_line = 256  # laser line (head cut) in frame pixels; 200 in the legacy space
 
 # Parámetros de pescado (estos se actualizarán según la selección)
 fish_parameters = {
@@ -237,10 +267,24 @@ fish_parameters = {
     "TAIL_TRIGGER_DIAMETER":    None  # C : Tail Trigger Diameter : the minimum diameter of the fish that determine the tail cut >> when we reach this diameter we stop measuring pixels
 }
 
+def _frame_size_of(config):
+    """Return the frame size the config's pixel values were saved in."""
+    size = config.get("frame_size")
+    if size is None:
+        return LEGACY_FRAME_SIZE
+    width, height = size.get("width"), size.get("height")
+    if (isinstance(width, bool) or isinstance(height, bool)
+            or not isinstance(width, int) or not isinstance(height, int)
+            or width <= 0 or height <= 0):
+        raise ValueError("frame_size must hold positive integers")
+    return (width, height)
+
+
 def loadConfig():
     """Load valid vision settings or stop startup instead of measuring with defaults."""
     config = read_config()
     try:
+        source_size = _frame_size_of(config)
         points = config["zoi"]
         if not isinstance(points, list) or len(points) != 2:
             raise ValueError("zoi must contain exactly two points")
@@ -258,16 +302,60 @@ def loadConfig():
         ratio = float(config["ppmm"])
         if not math.isfinite(ratio) or not 0.001 <= ratio <= 10:
             raise ValueError("ppmm must be between 0.001 and 10")
+        line = config.get("zero_line", 200 if source_size == LEGACY_FRAME_SIZE else None)
+        if isinstance(line, bool) or not isinstance(line, (int, float)):
+            raise ValueError("zero_line must be numeric")
+        line = math.floor(line)
         if min(x1, y1) < 0 or x2 <= x1 or y2 <= y1:
             raise ValueError("zoi coordinates are invalid")
-        if x2 > __FRAMESIZE__[0] or y2 > __FRAMESIZE__[1]:
+        if x2 > source_size[0] or y2 > source_size[1]:
             raise ValueError("zoi exceeds capture dimensions")
+        if not 0 <= line < source_size[0]:
+            raise ValueError("zero_line is outside the frame")
     except (KeyError, TypeError, ValueError, OverflowError) as exc:
         raise RuntimeError("Configuracion de vision invalida: {0}".format(exc)) from exc
 
-    global zoi_x1, zoi_y1, zoi_x2, zoi_y2, coef_calibration
+    if source_size != __FRAMESIZE__:
+        # Same field of view, more pixels: scale every pixel value. mm/px
+        # follows the width, the axis it was calibrated on.
+        fx = __FRAMESIZE__[0] / source_size[0]
+        fy = __FRAMESIZE__[1] / source_size[1]
+        x1, x2, line = round(x1 * fx), round(x2 * fx), round(line * fx)
+        y1, y2 = round(y1 * fy), round(y2 * fy)
+        old_ratio, ratio = ratio, ratio / fx
+
+        def migrate(stored):
+            stored["zoi"] = [{"x": x1, "y": y1}, {"x": x2, "y": y2}]
+            stored["ppmm"] = ratio
+            stored["zero_line"] = line
+            stored["frame_size"] = {"width": __FRAMESIZE__[0], "height": __FRAMESIZE__[1]}
+
+        update_config_store(migrate)
+        print("Vision config moved from {0} to {1}".format(source_size, __FRAMESIZE__))
+        logEvent(
+            etapa="CALIBRATION",
+            status="SUCCESS",
+            vision_params={"old_ratio": old_ratio, "new_ratio": ratio,
+                           "zoi": [x1, y1, x2, y2], "zero_line": line},
+            additional_data={"calibration_type": "frame_size_migration",
+                             "from": list(source_size), "to": list(__FRAMESIZE__)},
+        )
+
+    global zoi_x1, zoi_y1, zoi_x2, zoi_y2, coef_calibration, zero_line
     zoi_x1, zoi_y1, zoi_x2, zoi_y2 = x1, y1, x2, y2
     coef_calibration = ratio
+    zero_line = line
+
+
+def get_vision_geometry():
+    """Frame size and pixel references the UI needs to map clicks to frame pixels."""
+    return {
+        "width": __FRAMESIZE__[0],
+        "height": __FRAMESIZE__[1],
+        "zero_line": zero_line,
+        "guide_line_y": GUIDE_LINE_Y,
+        "ppmm": coef_calibration,
+    }
     
 
 loadConfig()
@@ -502,8 +590,8 @@ def _run_analysis(frame=None):
 
     print(f"ROIBW shape: {ROIBW.shape}")
 
-    cv2.line(im, (analysis_zero_line, 0), (analysis_zero_line, 1000), (0, 0, 255), 1)
-    cv2.line(im, (0, 330), (1000, 330), (0, 0, 255), 1)
+    cv2.line(im, (analysis_zero_line, 0), (analysis_zero_line, height), (0, 0, 255), 1)
+    cv2.line(im, (0, GUIDE_LINE_Y), (width, GUIDE_LINE_Y), (0, 0, 255), 1)
     cv2.rectangle(im, (zoi_x1, zoi_y1), (zoi_x2, zoi_y2), (0, 255, 0), 1)
     cv2.rectangle(im, (zero_line_clipped, zoi_y1_clipped), (zoi_x2_clipped, zoi_y2_clipped), (0, 0, 255), 1)
     cv2.putText(im, "Zone Of Interest", (zoi_x2-150, zoi_y2+30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 150, 0), 1)
