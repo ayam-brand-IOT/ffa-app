@@ -77,9 +77,21 @@ _calibration_release_pending = False
 # Clients showing the capture screen. The ready beep only sounds while at
 # least one is armed; calibration beeps on its own confirmed steps.
 _beep_sids = set()
+# Clients showing the analysis screen. The laser is only needed there, so it
+# stays off everywhere else to save its life. The capture turns it off for the
+# flash; _flash_on keeps an arm/disarm from turning it back on mid-capture.
+_laser_sids = set()
+_flash_on = False
 _ready = ReadyDetector()
 _ready_state = {"ready": False, "value": None}
 _trace = ScaleTrace()
+
+
+def _apply_laser():
+    """Laser on while a client is on the analysis screen, unless flashing."""
+    with thread_lock:
+        if not _flash_on:
+            ios.set_laser(bool(_laser_sids))
 
 
 def _clear_ready():
@@ -304,7 +316,6 @@ def update_net_status():
 @socketio.on('connect')
 def on_connect(auth):
     print("Client connected")
-    ios.set_laser(True)
     ios.set_flash(False)
     _ensure_poller()
 
@@ -314,6 +325,9 @@ def on_disconnect():
     sid = request.sid
     print("Client disconnected")
     _beep_sids.discard(sid)
+    if sid in _laser_sids:
+        _laser_sids.discard(sid)
+        _apply_laser()
     owner = _release_calibration(sid=sid)
     if owner is not None:
         logEvent(
@@ -336,6 +350,19 @@ def arm_ready_beep(data=None):
 @socketio.event
 def disarm_ready_beep(data=None):
     _beep_sids.discard(request.sid)
+
+
+@socketio.event
+def arm_laser(data=None):
+    """The analysis screen is open: it needs the laser line."""
+    _laser_sids.add(request.sid)
+    _apply_laser()
+
+
+@socketio.event
+def disarm_laser(data=None):
+    _laser_sids.discard(request.sid)
+    _apply_laser()
 
 
 @socketio.event
@@ -605,6 +632,7 @@ def _capture_with_synced_flash():
     fresh frames that are known to arrive after the flash trigger, which cuts
     latency and makes timing tunable by frame count instead of guesswork.
     """
+    global _flash_on
     flash_started = False
     try:
         print("capturing")
@@ -622,7 +650,7 @@ def _capture_with_synced_flash():
             frame_marker = imageProcess.get_frame_marker()
             ios.set_laser(False)
             ios.set_flash(True)
-            flash_started = True
+            flash_started = _flash_on = True
 
         if FLASH_SETTLE_SECONDS > 0:
             socketio.sleep(FLASH_SETTLE_SECONDS)
@@ -635,8 +663,8 @@ def _capture_with_synced_flash():
 
         with thread_lock:
             ios.set_flash(False)
-            ios.set_laser(True)
-            flash_started = False
+            flash_started = _flash_on = False
+            ios.set_laser(bool(_laser_sids))
 
             captured_frame = imageProcess.handle_capture(frame_is_ready, frame=frame)
             socketio.start_background_task(_run_analysis_in_tpool, captured_frame)
@@ -645,7 +673,8 @@ def _capture_with_synced_flash():
             try:
                 with thread_lock:
                     ios.set_flash(False)
-                    ios.set_laser(True)
+                    _flash_on = False
+                    ios.set_laser(bool(_laser_sids))
             except Exception:
                 pass
         logEvent(etapa="CAPTURE", status="ERROR",

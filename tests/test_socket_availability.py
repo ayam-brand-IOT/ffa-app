@@ -92,6 +92,8 @@ def reset_state():
     sockets._poller_started = False
     sockets._poller_task = None
     sockets._beep_sids.clear()
+    sockets._laser_sids.clear()
+    sockets._flash_on = False
     sockets._clear_ready()
     socketio.emitted.clear()
     socketio.started.clear()

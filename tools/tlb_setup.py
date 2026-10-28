@@ -297,7 +297,7 @@ def main(argv=None):
     parser.add_argument("--interval", type=float, default=0.4)
     parser.add_argument("--report", type=Path, help="new JSON report; existing files are never overwritten")
     parser.add_argument("--ack-connection-outputs", action="store_true",
-                        help="acknowledge that connecting turns the backend laser ON and flash OFF")
+                        help="acknowledge that connecting turns the backend flash OFF (and the laser stays on if the analysis screen is open)")
     args = parser.parse_args(argv)
     try:
         if args.command == "init":
@@ -316,7 +316,7 @@ def main(argv=None):
         if not 3 <= args.samples <= 120 or not number(args.interval) or not 0.2 <= args.interval <= 10:
             raise ValueError("Use 3-120 samples and an interval of 0.2-10 seconds")
         if not args.ack_connection_outputs:
-            raise ValueError("Clear the laser area, then pass --ack-connection-outputs; no connection opened")
+            raise ValueError("Connecting turns the flash off; pass --ack-connection-outputs; no connection opened")
         if args.report and args.report.exists():
             raise ValueError("Report already exists; choose a new path")
         samples, errors = [], []
